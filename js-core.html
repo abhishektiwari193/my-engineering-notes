@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JS Core 30: Deep Dive</title>
+    
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-vsc-dark-plus.min.css" rel="stylesheet" />
+    
+    <style>
+        :root {
+            --bg-color: #0f172a;       
+            --card-bg: #1e293b;        
+            --text-primary: #e2e8f0;   
+            --text-secondary: #94a3b8; 
+            --accent: #fbbf24; /* Amber */
+            --eli5-bg: rgba(56, 189, 248, 0.1); /* Light Blue Tint */
+            --tech-bg: rgba(251, 191, 36, 0.05); /* Light Yellow Tint */
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            line-height: 1.6;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        h1, h2 { color: var(--accent); margin-top: 40px; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+        
+        details {
+            background-color: var(--card-bg);
+            margin-bottom: 25px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+        }
+        summary {
+            padding: 18px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1.1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: rgba(255, 255, 255, 0.02);
+            list-style: none;
+        }
+        summary:hover { background-color: rgba(255, 255, 255, 0.05); }
+        summary::-webkit-details-marker { display: none; }
+        summary::after { content: '+'; color: var(--accent); font-size: 1.5rem; }
+        details[open] summary::after { content: '-'; }
+        
+        .content { padding: 25px; border-top: 1px solid #334155; }
+        
+        /* ELI5 Section */
+        .eli5-box {
+            background-color: var(--eli5-bg);
+            border-left: 4px solid #38bdf8; /* Blue */
+            padding: 15px 20px;
+            border-radius: 0 6px 6px 0;
+            margin-bottom: 15px;
+        }
+        .eli5-title { color: #38bdf8; font-weight: 800; font-size: 0.8rem; text-transform: uppercase; display: block; margin-bottom: 5px; }
+
+        /* Technical Section */
+        .tech-box {
+            background-color: var(--tech-bg);
+            border-left: 4px solid var(--accent); /* Yellow */
+            padding: 15px 20px;
+            border-radius: 0 6px 6px 0;
+            margin-bottom: 20px;
+        }
+        .tech-title { color: var(--accent); font-weight: 800; font-size: 0.8rem; text-transform: uppercase; display: block; margin-bottom: 5px; }
+
+        .badge {
+            font-size: 0.7em;
+            padding: 3px 10px;
+            border-radius: 20px;
+            background: #334155;
+            color: #fff;
+            vertical-align: middle;
+            margin-left: 10px;
+            font-weight: normal;
+        }
+    </style>
+</head>
+<body>
+
+    <h1 style="text-align: center; border: none;">JS Core 30</h1>
+    <p style="text-align: center; color: var(--text-secondary); margin-bottom: 50px;">
+        Batch 1: The Engine Room (Scopes & Compilation)
+    </p>
+
+    <details open>
+        <summary>1. Var vs Let vs Const <span class="badge">Fundamental</span></summary>
+        <div class="content">
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Escape Artist</span>
+                <p>Imagine your code has "fences" (curly braces <code>{}</code>).</p>
+                <ul>
+                    <li><strong>Var</strong> is a wild dog. It can jump over small fences (if/for blocks). It is only stopped by the high walls of a House (Function).</li>
+                    <li><strong>Let/Const</strong> are hamsters. They are stuck inside any fence you put them in.</li>
+                </ul>
+            </div>
+            
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Dev: Hoisting & TDZ</span>
+                <p><strong>Hoisting:</strong> <code>var</code> is hoisted and initialized with <code>undefined</code> immediately. <br>
+                <strong>TDZ (Temporal Dead Zone):</strong> <code>let/const</code> are hoisted, but put in a "Dead Zone". Accessing them before their line triggers a ReferenceError.</p>
+            </div>
+
+<pre><code class="language-javascript">// 1. The "Wild Dog" (Var)
+{
+    var dog = "Rex"; 
+}
+console.log(dog); // "Rex" (Leaked out of the block!)
+
+// 2. The "Hamster" (Let)
+{
+    let hamster = "Nibbles";
+}
+console.log(hamster); // ❌ ReferenceError (Trapped)
+
+// 3. The Interview Trap (TDZ)
+console.log(a); // undefined (Hoisted)
+var a = 1;
+
+console.log(b); // ❌ ReferenceError (TDZ)
+let b = 2;</code></pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>2. Execution Context <span class="badge">Deep Dive</span></summary>
+        <div class="content">
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Chef's Prep</span>
+                <p>JavaScript is a Chef who works in two steps:</p>
+                <ol>
+                    <li><strong>Prep (Creation Phase):</strong> Reads the whole recipe first. Gathers all ingredients (variables) and tools (functions) and lays them on the table. He doesn't cook yet.</li>
+                    <li><strong>Cook (Execution Phase):</strong> Turns on the stove and runs the steps line-by-line.</li>
+                </ol>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Dev: Memory Allocation</span>
+                <p>During the <strong>Creation Phase</strong>, the engine scans for declarations.</p>
+                <ul>
+                    <li>Function Declarations: Stored <strong>completely</strong> in memory.</li>
+                    <li>Variables: Stored as keys, but values are set to <code>undefined</code>.</li>
+                </ul>
+                <p>This explains why you can call a function <em>before</em> you define it.</p>
+            </div>
+
+<pre><code class="language-javascript">// --- CREATION PHASE ---
+// Engine sees 'greet'. Stores the whole function.
+// Engine sees 'food'. Stores it as 'undefined'.
+
+// --- EXECUTION PHASE ---
+greet(); // Works! (It was prepped)
+
+console.log(food); // undefined (It exists, but has no value yet)
+
+var food = "Pizza"; // Now 'food' becomes "Pizza"
+
+function greet() {
+    console.log("Hello!");
+}</code></pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>3. Closures <span class="badge">Architecture</span></summary>
+        <div class="content">
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Backpack</span>
+                <p>Imagine a function is a person leaving their house. When they leave, they put on a <strong>Backpack</strong>.</p>
+                <p>In that backpack, they stuff every item (variable) that existed in their house.</p>
+                <p>Even if the house burns down (function finishes), the person still has the items in their backpack forever.</p>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Dev: Heap Memory & Lexical Scope</span>
+                <p>Normally, local variables are cleared from the Stack when a function pops off. <br>
+                However, if an inner function references an outer variable, JS moves that variable to the <strong>Heap</strong> instead of deleting it. The inner function keeps a pointer to this Heap memory (the Closure).</p>
+            </div>
+
+<pre><code class="language-javascript">function createCounter() {
+    let count = 0; // Local variable
+
+    // This inner function grabs 'count' and puts it in its backpack
+    return function() {
+        count++;
+        return count;
+    };
+}
+
+const myCounter = createCounter(); 
+// createCounter() is done. 'count' should be gone.
+// BUT, myCounter still holds it in the closure.
+
+console.log(myCounter()); // 1
+console.log(myCounter()); // 2</code></pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>4. IIFE (Immediate Invocation) <span class="badge">Pattern</span></summary>
+        <div class="content">
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Invisible Ink</span>
+                <p>Sometimes you want to write a secret message that disappears after reading.</p>
+                <p>An IIFE creates a "Bubble". It runs the code inside once, then the bubble pops. No variables leak out to mess up the rest of your app.</p>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Dev: Encapsulation</span>
+                <p>Before ES6 Modules, IIFE was the primary way to achieve <strong>Module Pattern</strong>. It creates a private scope to avoid "Global Namespace Pollution".</p>
+            </div>
+
+<pre><code class="language-javascript">// Syntax: ( function definition )();
+
+(function() {
+    // All of this is private
+    const secretKey = "123-ABC";
+    const dbName = "Production_DB";
+    
+    console.log("System initializing...");
+    // Logic happens...
+    
+    // Clean up happens automatically when function ends.
+})();
+
+console.log(secretKey); // ❌ ReferenceError (It's gone)</code></pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>5. Coercion (Implicit Conversion) <span class="badge">Tricky</span></summary>
+        <div class="content">
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Peacemaker</span>
+                <p>JS hates crashing. If you try to add a Word to a Number, JS forces them to agree instead of throwing an error.</p>
+                <ul>
+                    <li><strong>Plus (+):</strong> Loves Words. If it sees a string, everything becomes a string.</li>
+                    <li><strong>Math (-, *, /):</strong> Loves Numbers. It forces strings to be numbers.</li>
+                </ul>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Dev: Type Casting Rules</span>
+                <p>The engine calls <code>ToPrimitive()</code> on objects. <br>
+                The <code>+</code> operator triggers string concatenation if any operand is a string. <br>
+                Bitwise or Math operators trigger <code>Number()</code> conversion.</p>
+            </div>
+
+<pre><code class="language-javascript">console.log(1 + "2");   // "12" (String wins)
+console.log(1 - "2");   // -1   (Math wins)
+
+// The Truthy/Falsy Trap
+// Falsy values: 0, "", null, undefined, NaN, false.
+// EVERYTHING else is Truthy (including empty arrays []).
+
+if ([]) {
+    console.log("Empty array is truthy!"); // This runs
+}
+
+if ("") {
+    console.log("Empty string is falsy"); // This doesn't run
+}</code></pre>
+        </div>
+    </details>
+  <div class="pattern-group" style="margin-top: 50px;">
+        <h2>Part 2: The Event Loop & 'this' (6-10)</h2>
+
+        <details>
+            <summary>6. The Event Loop <span class="badge">Critical</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Waiter & The Kitchen</span>
+                    <p>JavaScript is a single Waiter (Single Threaded).</p>
+                    <ul>
+                        <li><strong>Call Stack (The Waiter):</strong> Can only hold one plate at a time.</li>
+                        <li><strong>Web APIs (The Kitchen):</strong> The Waiter hands off slow work (boiling water, fetching data) to the Kitchen so he can keep serving tables.</li>
+                        <li><strong>Queue (The Counter):</strong> When the Kitchen is done, they put the dish on the Counter.</li>
+                    </ul>
+                    <p><strong>Crucial Rule:</strong> The Waiter will <em>never</em> pick up a dish from the Counter until his hands are completely empty (Stack is clear).</p>
+                </div>
+                
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: Non-Blocking I/O</span>
+                    <p>JS relies on the host environment (Browser/Node) for concurrency. <br>
+                    <code>setTimeout</code> doesn't pause execution; it registers a callback with the Timer API. The Event Loop's job is to check: <code>if (CallStack.isEmpty()) { Queue.pop() }</code>.</p>
+                </div>
+
+<pre><code class="language-javascript">console.log("1. Order Placed");
+
+// The Waiter hands this to the Kitchen (Web API).
+// It says "Wait 0 seconds". The Kitchen puts it in the Queue INSTANTLY.
+setTimeout(() => {
+    console.log("2. Dish Ready");
+}, 0);
+
+console.log("3. Serve Next Customer");
+
+// EXECUTION ORDER:
+// 1. Order Placed
+// 3. Serve Next Customer
+// (Stack is empty now... Event Loop checks Queue)
+// 2. Dish Ready</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>7. Microtasks vs Macrotasks <span class="badge">Deep Dive</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The VIP Line</span>
+                    <p>Not all tasks are equal. There are two lines at the counter.</p>
+                    <ul>
+                        <li><strong>VIP Line (Microtasks):</strong> Promises, queueMicrotask.</li>
+                        <li><strong>Regular Line (Macrotasks):</strong> setTimeout, setInterval.</li>
+                    </ul>
+                    <p><strong>Rule:</strong> The Waiter clears the ENTIRE VIP line before he serves even one person from the Regular line.</p>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: Job Queue Priority</span>
+                    <p>The Event Loop cycle is: <br>
+                    1. Run Script. <br>
+                    2. <strong>Drain Microtask Queue completely.</strong> <br>
+                    3. Run <em>ONE</em> Macrotask. <br>
+                    4. Render UI. <br>
+                    5. Repeat.</p>
+                </div>
+
+<pre><code class="language-javascript">console.log("Start");
+
+setTimeout(() => console.log("Timeout (Macro)"), 0);
+
+Promise.resolve().then(() => console.log("Promise 1 (Micro)"));
+
+Promise.resolve().then(() => {
+    console.log("Promise 2 (Micro)");
+    // Even if we add more microtasks NOW, they still cut the line
+    Promise.resolve().then(() => console.log("Promise 3 (Micro)"));
+});
+
+console.log("End");
+
+// Output:
+// Start
+// End
+// Promise 1
+// Promise 2
+// Promise 3 (Still technically part of the VIP batch)
+// Timeout</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>8. The 'this' Keyword <span class="badge">Tricky</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: Who is holding the remote?</span>
+                    <p><code>this</code> is not about <em>where</em> the function lives. It is about <em>how</em> the function is called.</p>
+                    <p>Look at the <strong>Left of the Dot</strong> at the moment the function runs.</p>
+                    <ul>
+                        <li><code>user.sing()</code> -> Left of dot is user. <code>this</code> = user.</li>
+                        <li><code>sing()</code> -> No dot? <code>this</code> = Global Window (or undefined).</li>
+                    </ul>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: Implicit Binding</span>
+                    <p>The call site determines the context. Assigning a method to a variable loses the binding because the "dot" is gone.</p>
+                </div>
+
+<pre><code class="language-javascript">const user = {
+    name: "Alice",
+    greet() {
+        console.log("Hello, " + this.name);
+    }
+};
+
+// Case 1: Dot Notation
+user.greet(); // "Hello, Alice"
+
+// Case 2: The Lost Context
+const looseGreet = user.greet; 
+looseGreet(); // "Hello, undefined" (Called by Window)
+
+// Case 3: Callback Trap
+setTimeout(user.greet, 100); 
+// "Hello, undefined" 
+// Why? setTimeout just receives the function definition. 
+// It calls it later as a plain function call 'callback()', not 'user.callback()'.</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>9. Call, Apply, Bind <span class="badge">Essential</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: Borrowing Tools</span>
+                    <p>Since <code>this</code> breaks easily (see Q8), we need tools to force it to behave.</p>
+                    <ul>
+                        <li><strong>Call:</strong> "Borrow the hammer. Use it NOW." (Pass args one by one).</li>
+                        <li><strong>Apply:</strong> "Borrow the hammer. Use it NOW." (Pass args as a bag/array).</li>
+                        <li><strong>Bind:</strong> "Make a COPY of the hammer, glue it to my hand. I'll use it later."</li>
+                    </ul>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: Explicit Binding</span>
+                    <p><code>Bind</code> is heavily used in React (class components) and event listeners to ensure the callback remembers its context.</p>
+                </div>
+
+<pre><code class="language-javascript">const wizard = { name: "Harry" };
+const muggle = { name: "Dudley" };
+
+function castSpell(spell, power) {
+    console.log(`${this.name} casts ${spell} (Level ${power})`);
+}
+
+// 1. CALL (Comma separated)
+castSpell.call(wizard, "Expelliarmus", 10); 
+
+// 2. APPLY (Array of arguments)
+castSpell.apply(muggle, ["Punch", 1]);
+
+// 3. BIND (Returns a new function)
+// Useful for fixing the setTimeout trap from Q8
+const harryCast = castSpell.bind(wizard);
+setTimeout(() => harryCast("Lumos", 5), 1000);</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>10. Arrow Functions vs Regular <span class="badge">Modern JS</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Ghost</span>
+                    <p>Regular functions define their own identity (<code>this</code>) based on who calls them.</p>
+                    <p>Arrow functions <code>=></code> are invisible ghosts. They don't have their own <code>this</code>. If you use <code>this</code> inside them, they look <em>through</em> themselves to the parent scope.</p>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: Lexical Scoping</span>
+                    <p>Arrow functions capture the `this` value of the enclosing context at the time they are defined. They cannot be changed via <code>.bind()</code>, <code>.call()</code>, or <code>.apply()</code>.</p>
+                </div>
+
+<pre><code class="language-javascript">const group = {
+    title: "Dream Team",
+    members: ["Alice", "Bob"],
+
+    showList() {
+        // 'this' is 'group' here
+        
+        // ❌ Regular Function: Fails
+        // It creates its own 'this' (undefined) inside the loop
+        this.members.forEach(function(member) {
+            console.log(this.title + ": " + member); // Error
+        });
+
+        // ✅ Arrow Function: Works
+        // It has no 'this', so it uses the 'this' from showList()
+        this.members.forEach((member) => {
+            console.log(this.title + ": " + member);
+        });
+    }
+};
+
+group.showList();</code></pre>
+            </div>
+        </details>
+        <div class="pattern-group" style="margin-top: 50px;">
+        <h2>Part 3: Object Oriented JS (11-15)</h2>
+
+        <details>
+            <summary>11. Prototypal Inheritance <span class="badge">Architecture</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The DNA Chain</span>
+                    <p>Imagine you want to borrow a tool. You check your own pockets.</p>
+                    <p>If you don't have it, you ask your Dad. If he doesn't have it, he asks his Dad (Grandpa). This chain goes up until you hit the First Human (Object.prototype). If he doesn't have it, the result is <code>undefined</code>.</p>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: The Prototype Chain</span>
+                    <p>JavaScript doesn't have "Classes" in the traditional sense. It has <strong>Linked Objects</strong>. <br>
+                    When you access `obj.prop`, the engine checks `obj`. If not found, it traverses `obj.__proto__`, then `obj.__proto__.__proto__`, until it hits null.</p>
+                </div>
+
+<pre><code class="language-javascript">const grandpa = {
+    wealth: 1000000,
+    house: "Mansion"
+};
+
+// Create Dad using Grandpa as the prototype
+const dad = Object.create(grandpa);
+dad.car = "BMW";
+
+// Create Me using Dad as the prototype
+const me = Object.create(dad);
+me.toy = "Xbox";
+
+console.log(me.toy);    // "Xbox" (Found on Me)
+console.log(me.car);    // "BMW" (Found on Dad)
+console.log(me.wealth); // 1000000 (Found on Grandpa)
+console.log(me.yacht);  // undefined (Nobody has it)</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>12. __proto__ vs prototype <span class="badge">Confusing</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Blueprint vs The Link</span>
+                    <p>This is the #1 confusion in JS.</p>
+                    <ul>
+                        <li><strong>prototype:</strong> The "Blueprint". Only <strong>Functions</strong> (Constructors) have this. It says: "If anyone uses 'new' on me, THIS is what their parent will look like."</li>
+                        <li><strong>__proto__:</strong> The "Umbilical Cord". Every <strong>Object</strong> (instance) has this. It points up to the parent.</li>
+                    </ul>
+                </div>
+
+<pre><code class="language-javascript">function Dog() {} // Constructor Function
+
+// 1. The Blueprint (Only on functions)
+// "Future dogs will have the ability to bark"
+Dog.prototype.bark = function() { console.log("Woof!"); };
+
+const myDog = new Dog(); // Create instance
+
+// 2. The Link (On instances)
+// myDog does NOT have a .prototype property.
+// It has a .__proto__ that points to Dog.prototype
+console.log(myDog.__proto__ === Dog.prototype); // true
+
+myDog.bark(); // Works via the chain!</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>13. The 'new' Keyword (Under the Hood) <span class="badge">Deep Dive</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Factory Machine</span>
+                    <p>When you type `new`, JavaScript automatically does 4 steps for you to create an object.</p>
+                    <ol>
+                        <li>Creates a fresh empty object `{}`.</li>
+                        <li>Links the "Umbilical Cord" (`__proto__`) to the Blueprint.</li>
+                        <li>Runs the function with `this` pointing to the new object.</li>
+                        <li>Returns the object.</li>
+                    </ol>
+                </div>
+
+<pre><code class="language-javascript">function User(name) {
+    this.name = name;
+    this.isAdmin = false;
+}
+
+// What happens when we run: const u = new User("Alice");
+
+// --- MANUAL SIMULATION OF 'NEW' ---
+function myNew(Constructor, ...args) {
+    // 1. Create empty object
+    const obj = {};
+    
+    // 2. Link prototypes
+    Object.setPrototypeOf(obj, Constructor.prototype);
+    
+    // 3. Run function with 'this' = obj
+    Constructor.apply(obj, args);
+    
+    // 4. Return obj
+    return obj;
+}
+
+const u = myNew(User, "Alice");
+console.log(u.name); // "Alice"</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>14. ES6 Classes (Syntactic Sugar) <span class="badge">Modern JS</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The New Label Maker</span>
+                    <p>Before 2015, we wrote ugly prototype code (like Q12). <br>
+                    ES6 introduced `class`, but it didn't change how JS works. It just looks prettier (like Java/C++). Under the hood, it is <strong>still</strong> using the Prototype chain.</p>
+                </div>
+
+<pre><code class="language-javascript">// --- MODERN WAY (Class) ---
+class Animal {
+    constructor(name) {
+        this.name = name;
+    }
+    speak() {
+        console.log(`${this.name} makes a noise`);
+    }
+}
+
+// --- THE ENGINE SEES THIS (Old Way) ---
+function Animal(name) {
+    this.name = name;
+}
+Animal.prototype.speak = function() {
+    console.log(`${this.name} makes a noise`);
+};
+
+// They are 99% identical. 
+// Classes just protect you from calling them without 'new'.</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>15. Getters and Setters <span class="badge">Essential</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Security Guard</span>
+                    <p>Normally, you can just change a property: <code>user.age = -5</code>. (Bad!).<br>
+                    Setters are like Bouncers. They stand at the door. When you try to set a value, the Bouncer intercepts it, checks if it's valid ("Age can't be negative!"), and only then lets it in.</p>
+                </div>
+
+<pre><code class="language-javascript">class User {
+    constructor(name) {
+        this._name = name; // Convention: _ means "private"
+    }
+
+    // GETTER: Run logic when someone reads properties
+    get name() {
+        return this._name.toUpperCase();
+    }
+
+    // SETTER: Run logic when someone assigns properties
+    set name(newName) {
+        if (newName.length < 3) {
+            console.log("Name too short!");
+            return;
+        }
+        this._name = newName;
+    }
+}
+
+const u = new User("bob");
+u.name = "Al";    // "Name too short!" (Setter intercepts)
+u.name = "Alice"; // Works
+console.log(u.name); // "ALICE" (Getter intercepts)</code></pre>
+            </div>
+        </details>
+        <div class="pattern-group" style="margin-top: 50px;">
+        <h2>Part 4: Functional Patterns (16-20)</h2>
+
+        <details>
+            <summary>16. Pure Functions <span class="badge">Fundamental</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Calculator vs The Thermometer</span>
+                    <p><strong>Pure Function (Calculator):</strong> If you type "2 + 2", it ALWAYS gives "4". It doesn't care if it's raining outside or if you are hungry.</p>
+                    <p><strong>Impure Function (Thermometer):</strong> If you ask "What is the temperature?", the answer changes based on the world outside (Side Effects).</p>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: Determinism</span>
+                    <p>A pure function must: <br>
+                    1. Given specific args, always return the same result.<br>
+                    2. Cause no <strong>Side Effects</strong> (no changing global variables, no API calls, no DOM manipulation inside).</p>
+                </div>
+
+<pre><code class="language-javascript">// ✅ Pure
+// Depends ONLY on inputs 'a' and 'b'
+const add = (a, b) => a + b;
+
+// ❌ Impure (Case 1: Global Dependency)
+let tax = 0.5;
+const calculateCost = (price) => price * tax; 
+// Result changes if 'tax' changes elsewhere
+
+// ❌ Impure (Case 2: Side Effect)
+const saveUser = (user) => {
+    database.save(user); // Mutates external database state
+}</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>17. Higher-Order Functions (HOF) <span class="badge">Essential</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The General Manager</span>
+                    <p>Regular functions are workers (they do a job).</p>
+                    <p><strong>Higher-Order Functions</strong> are Managers. They don't do the job themselves. They accept workers (functions) as input and tell them what to do, OR they create new workers and return them.</p>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: Functions as First-Class Citizens</span>
+                    <p>In JS, functions can be passed around like strings or numbers. Common HOFs you use daily: <code>.map()</code>, <code>.filter()</code>, <code>.reduce()</code>, <code>addEventListener</code>.</p>
+                </div>
+
+<pre><code class="language-javascript">// Example 1: Accepting a function
+const numbers = [1, 2, 3];
+
+// 'map' is the HOF. It takes a worker function (x * 2)
+const doubled = numbers.map(x => x * 2);
+
+
+// Example 2: Returning a function
+function createMultiplier(multiplier) {
+    // Returns a NEW function
+    return function(x) {
+        return x * multiplier;
+    };
+}
+
+const double = createMultiplier(2);
+const triple = createMultiplier(3);
+
+console.log(double(5)); // 10
+console.log(triple(5)); // 15</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>18. Currying <span class="badge">Architecture</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Sandwich Line</span>
+                    <p>Instead of ordering a sandwich all at once ("Wheat, Turkey, Mayo"), you go through stations.</p>
+                    <p>Station 1: Pick Bread. (Wait).<br>
+                    Station 2: Pick Meat. (Wait).<br>
+                    Station 3: Pick Sauce. (Done).</p>
+                    <p>Currying turns a function that takes 3 arguments into 3 functions that take 1 argument each.</p>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: Partial Application</span>
+                    <p>It allows you to create specialized versions of general functions. <br>
+                    Logic: <code>f(a, b, c)</code> becomes <code>f(a)(b)(c)</code>.</p>
+                </div>
+
+<pre><code class="language-javascript">// Normal Function
+const buildSandwich = (bread, meat, sauce) => 
+    `${bread} with ${meat} and ${sauce}`;
+
+// Curried Version
+const currySandwich = (bread) => (meat) => (sauce) => 
+    `${bread} with ${meat} and ${sauce}`;
+
+// Usage
+const step1 = currySandwich("Wheat"); // Returns function waiting for meat
+const step2 = step1("Turkey");        // Returns function waiting for sauce
+const result = step2("Mayo");         // "Wheat with Turkey and Mayo"
+
+// Practical Use: creating a specialized logger
+const log = (level) => (msg) => console.log(`[${level}] ${msg}`);
+const logError = log("ERROR"); // Lock in the first argument
+logError("Server down");       // [ERROR] Server down</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>19. Composition (Pipe) <span class="badge">Deep Dive</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Factory Belt</span>
+                    <p>You have a Raw Potato.</p>
+                    <ul>
+                        <li>Machine A: Washes it.</li>
+                        <li>Machine B: Slices it.</li>
+                        <li>Machine C: Fries it.</li>
+                    </ul>
+                    <p><strong>Composition</strong> is connecting these machines into one belt. You put a potato in one end, and fries come out the other. You don't hold the potato in between steps.</p>
+                </div>
+
+<pre><code class="language-javascript">const getName = (person) => person.name;
+const uppercase = (str) => str.toUpperCase();
+const get6Chars = (str) => str.substring(0, 6);
+
+// The Ugly Way (Nesting)
+const result = get6Chars(uppercase(getName({ name: "Christopher" })));
+
+// The Clean Way (Composition)
+// We create a utility to combine functions Left-to-Right
+const pipe = (...fns) => (x) => fns.reduce((v, f) => f(v), x);
+
+const processName = pipe(
+    getName,
+    uppercase,
+    get6Chars
+);
+
+console.log(processName({ name: "Christopher" })); // "CHRIST"</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>20. Memoization (Caching) <span class="badge">Performance</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Librarian</span>
+                    <p>Imagine a Librarian who hates looking up books.</p>
+                    <p>When you ask "Where is Harry Potter?", she looks it up and tells you "Row 5". Then she writes "Harry Potter = Row 5" on a sticky note.</p>
+                    <p>The next time someone asks "Where is Harry Potter?", she doesn't move. She just reads the sticky note. Instant answer.</p>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: Caching with Closures</span>
+                    <p>We wrap a function with a Closure (the Backpack) that holds a <code>cache</code> object. Before running the heavy calculation, we check if <code>cache[args]</code> exists.</p>
+                </div>
+
+<pre><code class="language-javascript">const memoize = (fn) => {
+    const cache = {}; // The persistent backpack
+
+    return (...args) => {
+        // Create a unique key based on arguments
+        const key = JSON.stringify(args);
+        
+        if (key in cache) {
+            console.log("Fetching from cache...");
+            return cache[key];
+        } else {
+            console.log("Calculating...");
+            const result = fn(...args);
+            cache[key] = result;
+            return result;
+        }
+    };
+};
+
+// Expensive function
+const slowSquare = (n) => {
+    for(let i=0; i<100000000; i++) {} // Artificial delay
+    return n * n;
+}
+
+const fastSquare = memoize(slowSquare);
+
+console.log(fastSquare(5)); // "Calculating..." -> 25 (Slow)
+console.log(fastSquare(5)); // "Fetching from cache..." -> 25 (Instant)</code></pre>
+            </div>
+        </details>
+        <div class="pattern-group" style="margin-top: 50px;">
+        <h2>Part 5: Data Manipulation & Polyfills (21-25)</h2>
+
+        <details>
+            <summary>21. Map, Filter, Reduce (Polyfills) <span class="badge">Interview Favorite</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Assembly Line</span>
+                    <p><strong>Map:</strong> Transforms every item. (Raw Potato -> Sliced Potato).</p>
+                    <p><strong>Filter:</strong> Removes bad items. (Rotten Potato -> Trash).</p>
+                    <p><strong>Reduce:</strong> Smashes everything into one thing. (All Potatoes -> Mashed Potatoes).</p>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: Implementing from Scratch</span>
+                    <p>Interviewers often ask: "Implement <code>.map()</code> without using the built-in method." You need to understand how to extend <code>Array.prototype</code>.</p>
+                </div>
+
+<pre><code class="language-javascript">// 1. Map Polyfill
+Array.prototype.myMap = function(callback) {
+    const result = [];
+    // 'this' refers to the array calling the method
+    for (let i = 0; i < this.length; i++) {
+        result.push(callback(this[i], i, this));
+    }
+    return result;
+};
+
+// 2. Reduce Polyfill
+Array.prototype.myReduce = function(callback, initialValue) {
+    let accumulator = initialValue;
+    
+    for (let i = 0; i < this.length; i++) {
+        if (accumulator === undefined && i === 0) {
+            accumulator = this[i]; // Handle missing initialValue
+        } else {
+            accumulator = callback(accumulator, this[i], i, this);
+        }
+    }
+    return accumulator;
+};
+
+const nums = [1, 2, 3];
+console.log(nums.myMap(x => x * 2)); // [2, 4, 6]</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>22. Flattening Arrays (Recursion) <span class="badge">Algorithms</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Russian Nesting Dolls</span>
+                    <p>You have a box. Inside, there are loose items AND smaller boxes. Inside those, smaller boxes...</p>
+                    <p>You want to dump EVERYTHING onto the floor in one single pile.</p>
+                    <p><strong>Strategy:</strong> Open the box. If you see an item, keep it. If you see a box, <strong>recurse</strong> (do the exact same strategy on that box).</p>
+                </div>
+
+<pre><code class="language-javascript">const nested = [1, [2, [3, 4], 5], 6];
+
+// The Modern Way (ES2019)
+console.log(nested.flat(Infinity)); 
+
+// The Interview Way (Recursion)
+function flatten(arr) {
+    let result = [];
+    
+    for (let item of arr) {
+        if (Array.isArray(item)) {
+            // It's a box! Dump its contents (Recursion)
+            result = result.concat(flatten(item));
+        } else {
+            // It's an item! Keep it.
+            result.push(item);
+        }
+    }
+    return result;
+}
+
+console.log(flatten(nested)); // [1, 2, 3, 4, 5, 6]</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>23. Deep Clone vs Shallow Clone <span class="badge">Critical</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Photocopy</span>
+                    <p><strong>Shallow Clone:</strong> You photocopy the first page of a binder. But the "Table of Contents" just points to the original chapters. If someone changes Chapter 1, your copy changes too.</p>
+                    <p><strong>Deep Clone:</strong> You re-type every single page of the binder from scratch. Your copy is 100% independent.</p>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: Reference Handling</span>
+                    <p><code>{...obj}</code> only clones the first level. Nested objects are still references. <br>
+                    <strong>JSON.parse(JSON.stringify(obj))</strong> is a quick hack, but it kills Dates, Functions, and `undefined`.</p>
+                </div>
+
+<pre><code class="language-javascript">const original = {
+    name: "Alice",
+    details: { age: 25 } // Nested Object
+};
+
+// 1. Shallow Copy
+const shallow = { ...original };
+shallow.details.age = 99; 
+// OOPS! Original changed too because 'details' is a shared reference
+console.log(original.details.age); // 99 
+
+// 2. Deep Copy (The Modern Way)
+const deep = structuredClone(original);
+deep.details.age = 0;
+console.log(original.details.age); // 99 (Unchanged! Safe.)
+
+// 3. Deep Copy (Manual Recursion - Interview)
+function deepClone(obj) {
+    if (obj === null || typeof obj !== 'object') return obj;
+    const copy = Array.isArray(obj) ? [] : {};
+    
+    for (let key in obj) {
+        copy[key] = deepClone(obj[key]);
+    }
+    return copy;
+}</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>24. Generators & Iterators <span class="badge">Advanced</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Pausable Movie</span>
+                    <p>Normal functions run from start to finish. You can't stop them halfway.</p>
+                    <p><strong>Generators (`function*`)</strong> are like a movie you can pause. You press Play (`next()`), it runs a bit, then hits a Pause button (`yield`). It returns a value and waits for you to press Play again.</p>
+                </div>
+
+<pre><code class="language-javascript">function* numberGenerator() {
+    yield 1;
+    yield 2;
+    yield 3;
+}
+
+const gen = numberGenerator(); // It doesn't run yet. Just prepares.
+
+console.log(gen.next()); // { value: 1, done: false }
+console.log(gen.next()); // { value: 2, done: false }
+console.log(gen.next()); // { value: 3, done: false }
+console.log(gen.next()); // { value: undefined, done: true }
+
+// Practical Use: ID Generator
+function* idMaker() {
+    let index = 0;
+    while(true) yield index++; // Infinite loop, but safe because it pauses!
+}
+const ids = idMaker();
+console.log(ids.next().value); // 0</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>25. Object.freeze vs Object.seal <span class="badge">Tricky</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: Lamination vs Locked Box</span>
+                    <p><strong>Object.freeze (Lamination):</strong> You laminate a piece of paper. You cannot write on it, you cannot erase anything, you cannot add anything. Total lockdown.</p>
+                    <p><strong>Object.seal (Locked Box):</strong> You put items in a clear locked box. You cannot add new items. You cannot remove items. BUT, you <em>can</em> reach in and change the existing items (mutate values).</p>
+                </div>
+
+<pre><code class="language-javascript">const frozen = Object.freeze({ prop: 1 });
+frozen.prop = 2; // Fails (Silent fail in loose mode, Error in strict)
+frozen.newProp = 3; // Fails
+
+const sealed = Object.seal({ prop: 1 });
+sealed.prop = 2; // ✅ Works! You can change existing values.
+sealed.newProp = 3; // ❌ Fails. Cannot add new properties.
+delete sealed.prop; // ❌ Fails. Cannot delete properties.</code></pre>
+            </div>
+        </details>
+        <div class="pattern-group" style="margin-top: 50px;">
+        <h2>Part 6: DOM & Browser Performance (26-30)</h2>
+
+        <details>
+            <summary>26. Event Bubbling vs Capturing <span class="badge">Critical</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Diving Bell</span>
+                    <p>Imagine you throw a rock into a lake (Click Event).</p>
+                    <ol>
+                        <li><strong>Capturing Phase (Diving):</strong> The rock sinks down from the surface (Window) -> Body -> Div -> Button.</li>
+                        <li><strong>Target Phase:</strong> It hits the bottom (The Button).</li>
+                        <li><strong>Bubbling Phase (Floating):</strong> The bubbles float back up from Button -> Div -> Body -> Window.</li>
+                    </ol>
+                    <p>By default, JS listeners only trigger on the <strong>Bubbling</strong> (Upward) phase.</p>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: Event Phases</span>
+                    <p>You can force a listener to fire during the descent (Capture) by passing <code>{ capture: true }</code>. <br>
+                    <code>e.stopPropagation()</code> kills the bubble immediately, preventing parents from hearing the event.</p>
+                </div>
+
+<pre><code class="language-javascript">// HTML: &lt;div id="parent"&gt; &lt;button id="child"&gt;Click&lt;/button&gt; &lt;/div&gt;
+
+const parent = document.getElementById("parent");
+const child = document.getElementById("child");
+
+// 1. Bubbling (Default)
+// Click Child -> Logs "Child", then "Parent"
+parent.addEventListener("click", () => console.log("Parent Bubble"));
+child.addEventListener("click", () => console.log("Child Bubble"));
+
+// 2. Capturing (useCapture = true)
+// Click Child -> Logs "Parent Capture", then "Child Capture"
+parent.addEventListener("click", () => console.log("Parent Capture"), true);</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>27. Event Delegation <span class="badge">Performance</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Receptionist</span>
+                    <p>Imagine a hotel with 100 rooms. Instead of putting a mailman at <em>every single door</em> (100 listeners), you put <strong>one</strong> receptionist at the front desk (Parent).</p>
+                    <p>When mail arrives, the receptionist looks at the envelope ("To Room 402") and handles it. Even if you build new rooms later, the receptionist still handles them without needing new instructions.</p>
+                </div>
+
+<pre><code class="language-javascript">// ❌ Bad Way: Loop and add listener to every item
+// If you add a new &lt;li&gt; later, it won't have a listener!
+document.querySelectorAll('li').forEach(li => {
+    li.addEventListener('click', e => console.log("Clicked"));
+});
+
+// ✅ Good Way: Event Delegation
+// Add 1 listener to the parent &lt;ul&gt;
+document.querySelector('ul').addEventListener('click', (e) => {
+    // Check "Who exactly was clicked?" (The Envelope)
+    if (e.target.tagName === 'LI') {
+        console.log("List Item Clicked:", e.target.textContent);
+    }
+});</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>28. Debounce vs Throttle <span class="badge">Interview Favorite</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Elevator vs The Camera</span>
+                    <p><strong>Debounce (The Elevator):</strong> Waits for people to stop entering. If someone enters, the timer resets. The door only closes 5 seconds after the <em>last</em> person enters. <br>
+                    <em>Use case: Search bar typing.</em></p>
+                    <p><strong>Throttle (The Camera):</strong> Takes a picture exactly once every 5 seconds, no matter how many times you press the button in between. <br>
+                    <em>Use case: Scrolling / Window resizing.</em></p>
+                </div>
+
+<pre><code class="language-javascript">// 1. Debounce (Wait until stop)
+function debounce(fn, delay) {
+    let timer;
+    return (...args) => {
+        clearTimeout(timer); // Reset the timer
+        timer = setTimeout(() => fn(...args), delay);
+    };
+}
+
+// 2. Throttle (Run at intervals)
+function throttle(fn, limit) {
+    let lastRan = 0;
+    return (...args) => {
+        const now = Date.now();
+        if (now - lastRan >= limit) {
+            fn(...args);
+            lastRan = now;
+        }
+    };
+}</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>29. Storage: Local vs Session vs Cookies <span class="badge">Architecture</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Tattoo, The Whiteboard, The Note</span>
+                    <ul>
+                        <li><strong>LocalStorage (Tattoo):</strong> Permanent. Stays even after you die (close browser) and come back. (5-10MB).</li>
+                        <li><strong>SessionStorage (Whiteboard):</strong> Temporary. Wiped clean as soon as you leave the room (close tab). (5MB).</li>
+                        <li><strong>Cookies (Note to Teacher):</strong> Small notes (4KB) that get sent back and forth to the Server with every request. Used for ID cards (Auth Tokens).</li>
+                    </ul>
+                </div>
+
+<pre><code class="language-javascript">// 1. LocalStorage
+localStorage.setItem("theme", "dark");
+const theme = localStorage.getItem("theme"); // "dark" (Persists after restart)
+
+// 2. SessionStorage
+sessionStorage.setItem("isLoggedIn", "true");
+// (Gone if you open a new tab)
+
+// 3. Cookies (Old School)
+document.cookie = "username=John; expires=Thu, 18 Dec 2025 12:00:00 UTC";</code></pre>
+            </div>
+        </details>
+
+        <details>
+            <summary>30. Reflow vs Repaint <span class="badge">Performance</span></summary>
+            <div class="content">
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The LEGO House</span>
+                    <p><strong>Reflow (Rebuilding):</strong> You change the <strong>size</strong> of a brick. Now you have to calculate if the roof still fits, if the walls are straight, etc. It is very expensive math.</p>
+                    <p><strong>Repaint (Painting):</strong> You just change the <strong>color</strong> of a brick. You don't need to move anything. It is fast.</p>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Dev: The Rendering Pipeline</span>
+                    <p><strong>Reflow triggers:</strong> Width, Height, Margin, Flexbox changes, reading <code>offsetWidth</code>. <br>
+                    <strong>Repaint triggers:</strong> Color, Visibility, Shadow. <br>
+                    <strong>Optimization:</strong> Use <code>transform</code> (GPU) instead of <code>top/left</code> (CPU Reflow) for animations.</p>
+                </div>
+
+<pre><code class="language-javascript">// ❌ Bad (Triggers Reflow every line)
+const box = document.getElementById("box");
+box.style.width = "100px";
+box.style.height = "100px";
+box.style.margin = "10px";
+
+// ✅ Good (Triggers Reflow once)
+// Change class or use cssText
+box.style.cssText = "width: 100px; height: 100px; margin: 10px;";
+// OR
+box.classList.add("big-box");</code></pre>
+            </div>
+        </details>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+</body>
+</html>
