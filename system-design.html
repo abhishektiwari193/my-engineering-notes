@@ -1,0 +1,2803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Design: The Architect's Handbook</title>
+    
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-vsc-dark-plus.min.css" rel="stylesheet" />
+    
+    <style>
+        :root {
+            --bg-color: #0f172a;       
+            --card-bg: #1e293b;        
+            --text-primary: #e2e8f0;   
+            --text-secondary: #94a3b8; 
+            --accent: #f43f5e; /* Rose Red */
+            --eli5-bg: rgba(56, 189, 248, 0.1); 
+            --tech-bg: rgba(244, 63, 94, 0.1); 
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            line-height: 1.7;
+            max-width: 950px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        h1, h2 { color: var(--accent); margin-top: 40px; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+        
+        details {
+            background-color: var(--card-bg);
+            margin-bottom: 25px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+        summary {
+            padding: 20px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1.1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: rgba(255, 255, 255, 0.02);
+            list-style: none;
+        }
+        summary:hover { background-color: rgba(255, 255, 255, 0.05); }
+        summary::-webkit-details-marker { display: none; }
+        summary::after { content: '+'; color: var(--accent); font-size: 1.5rem; }
+        details[open] summary::after { content: '-'; }
+        
+        .content { padding: 25px; border-top: 1px solid #334155; }
+        
+        .eli5-box {
+            background-color: var(--eli5-bg);
+            border-left: 4px solid #38bdf8; 
+            padding: 15px 20px;
+            border-radius: 0 6px 6px 0;
+            margin-bottom: 15px;
+        }
+        .eli5-title { color: #38bdf8; font-weight: 800; font-size: 0.8rem; text-transform: uppercase; display: block; margin-bottom: 5px; }
+
+        .tech-box {
+            background-color: var(--tech-bg);
+            border-left: 4px solid var(--accent); 
+            padding: 15px 20px;
+            border-radius: 0 6px 6px 0;
+            margin-bottom: 20px;
+        }
+        .tech-title { color: var(--accent); font-weight: 800; font-size: 0.8rem; text-transform: uppercase; display: block; margin-bottom: 5px; }
+
+        .badge {
+            font-size: 0.7em;
+            padding: 3px 10px;
+            border-radius: 20px;
+            background: #334155;
+            color: #fff;
+            vertical-align: middle;
+            margin-left: 10px;
+            font-weight: normal;
+        }
+    </style>
+</head>
+<body>
+
+    <h1 style="text-align: center; border: none;">System Design: The Architect's Handbook</h1>
+    <p style="text-align: center; color: var(--text-secondary); margin-bottom: 50px;">
+        Module 1: Traffic & Scalability
+    </p>
+
+    <details open>
+        <summary>1. Vertical vs Horizontal Scaling <span class="badge">Foundation</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Pizza Oven</span>
+                <p>You run a pizza shop. You are getting too many orders.</p>
+                <ul>
+                    <li><strong>Vertical Scaling (Scale Up):</strong> You throw away your old oven and buy a <strong>Monster Industrial Oven</strong> that cooks 10 pizzas at once. It's easy (same kitchen, same staff), but eventually, you can't buy a bigger oven. It doesn't exist.</li>
+                    <li><strong>Horizontal Scaling (Scale Out):</strong> You buy <strong>10 Normal Ovens</strong>. Now you can cook 10 pizzas at once. If you need more, you buy another oven. BUT, now you need a bigger kitchen and a manager to decide which oven gets which pizza.</li>
+                </ul>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: Statelessness is Key</span>
+                <p>Horizontal Scaling is the default for App Servers (Node/Java) but it requires your app to be <strong>Stateless</strong>.</p>
+                <p><strong>The Trap:</strong> If Server A stores user sessions in its local RAM, and the Load Balancer sends the user's next request to Server B, Server B won't know who they are. <br>
+                <strong>The Fix:</strong> Move state out of the App Servers and into a shared layer (Redis for sessions, Postgres for data). This makes the servers "disposable" and "cloneable".</p>
+                <p><strong>Trade-offs:</strong> Vertical is cheaper for small/medium apps (no network overhead). Horizontal introduces <strong>Network Latency</strong> and <strong>Consistency Issues</strong>.</p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Simulation: The Limit of One vs The Power of Many</strong>
+                <p>We will simulate processing 10 "Heavy Requests" (Prime Number Calculation). <br>
+                1. <strong>Vertical:</strong> We run them on 1 Worker (The Monster Oven). <br>
+                2. <strong>Horizontal:</strong> We run them across 4 Workers (The Fleet).</p>
+            </div>
+
+<pre><code class="language-javascript">const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
+const os = require('os');
+
+// --- SIMULATION LOGIC ---
+if (isMainThread) {
+    const TASKS = 10;
+    
+    // 1. Vertical Scaling Simulation (1 Thread doing everything)
+    function runVertical() {
+        console.time('Vertical (1 CPU)');
+        let completed = 0;
+        const worker = new Worker(__filename, { workerData: { tasks: TASKS } });
+        worker.on('message', () => {
+            console.timeEnd('Vertical (1 CPU)');
+            runHorizontal(); // Start next test
+        });
+    }
+
+    // 2. Horizontal Scaling Simulation (4 Threads working together)
+    function runHorizontal() {
+        console.time('Horizontal (4 CPUs)');
+        let completed = 0;
+        const CORES = 4;
+        const tasksPerWorker = Math.ceil(TASKS / CORES); // Distribute load
+
+        for (let i = 0; i < CORES; i++) {
+            const worker = new Worker(__filename, { 
+                workerData: { tasks: tasksPerWorker } 
+            });
+            worker.on('message', () => {
+                completed++;
+                if (completed === CORES) {
+                    console.timeEnd('Horizontal (4 CPUs)');
+                }
+            });
+        }
+    }
+
+    console.log("Starting Simulation...");
+    runVertical();
+
+} else {
+    // --- WORKER LOGIC (The "Server") ---
+    const { tasks } = workerData;
+    
+    // Simulate heavy work (CPU Blocking)
+    for (let i = 0; i < tasks; i++) {
+        let count = 0;
+        for (let j = 0; j < 1e8; j++) count++; // Burn CPU
+    }
+    
+    parentPort.postMessage('done');
+}
+
+// TYPICAL OUTPUT:
+// Vertical (1 CPU): 5200ms
+// Horizontal (4 CPUs): 1400ms (Nearly 4x Faster!)</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: Why is Vertical Scaling preferred for Databases (SQL)?</strong><br>
+                <em>Ans:</em> Because splitting a relational database (Sharding) is extremely complex. JOINs across different servers are slow or impossible. It is usually better to buy a massive AWS RDS instance (Vertical) with 2TB RAM than to shard a SQL DB prematurely.</p>
+                
+                <p><strong>Q2: You scaled horizontally to 50 servers, but the app got SLOWER. Why?</strong><br>
+                <em>Ans:</em> <strong>The Database Bottleneck.</strong> You added more App Servers (Horses), but they are all drinking from the same small bucket (The single Database). The database connection pool got saturated. <br>
+                <em>Fix:</em> Add Read Replicas or implement a Cache (Redis) layer.</p>
+            </div>
+
+        </div>
+    </details>
+
+    <details>
+        <summary>2. Load Balancers: L4 vs L7 (Round Robin Demo) <span class="badge">Architecture</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Security Guard vs The Concierge</span>
+                <p><strong>L4 Load Balancer (The Security Guard):</strong> He stands at the gate. He looks at your ID (IP Address) and Ticket (Port). He points you to a door. He <strong>never</strong> looks inside your luggage. He is extremely fast.</p>
+                <p><strong>L7 Load Balancer (The Concierge):</strong> She welcomes you. She opens your luggage (HTTP Packet). She reads your diary (Cookies/Headers). If you asked for "Sushi", she sends you to the Japanese Kitchen. If you asked for "Pizza", she sends you to the Italian Kitchen. She is smarter but slower.</p>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: OSI Layers</span>
+                <p><strong>Layer 4 (Transport):</strong> Routes based on TCP/UDP info (IP + Port). Data is just a stream of bytes. No inspection. <br><em>Examples:</em> AWS Network Load Balancer (NLB).</p>
+                <p><strong>Layer 7 (Application):</strong> Routes based on HTTP info (URL, Headers, Cookies). Can terminate SSL, handle Authentication, and route `/api` to Server A and `/images` to Server B. <br><em>Examples:</em> NGINX, AWS Application Load Balancer (ALB).</p>
+            </div>
+            
+
+[Image of layer 4 vs layer 7 load balancing diagram]
+
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Building a Round-Robin Load Balancer</strong>
+                <p>We will spin up 3 "Worker Servers" and 1 "Load Balancer" that rotates requests between them.</p>
+            </div>
+
+<pre><code class="language-javascript">const http = require('http');
+
+// --- 1. START 3 BACKEND SERVERS ---
+const ports = [8001, 8002, 8003];
+
+ports.forEach(port => {
+    http.createServer((req, res) => {
+        // Simulate processing time
+        setTimeout(() => {
+            res.end(`Served by Worker on Port ${port}`);
+        }, 100);
+    }).listen(port, () => {
+        console.log(`Worker running on localhost:${port}`);
+    });
+});
+
+// --- 2. BUILD THE LOAD BALANCER (Reverse Proxy) ---
+let current = 0;
+
+const lb = http.createServer((clientReq, clientRes) => {
+    // A. Round Robin Selection
+    const targetPort = ports[current];
+    current = (current + 1) % ports.length; // 0, 1, 2, 0, 1...
+
+    console.log(`Proxying request to localhost:${targetPort}`);
+
+    // B. Create request to the Target Worker
+    const connector = http.request({
+        hostname: 'localhost',
+        port: targetPort,
+        path: clientReq.url,
+        method: clientReq.method,
+        headers: clientReq.headers
+    }, (targetRes) => {
+        // C. Pipe the response back to the Client
+        clientRes.writeHead(targetRes.statusCode, targetRes.headers);
+        targetRes.pipe(clientRes);
+    });
+
+    // Handle Errors (e.g., Worker 1 is dead)
+    connector.on('error', (err) => {
+        console.error(`Worker ${targetPort} is down!`);
+        clientRes.end('Service Unavailable');
+    });
+
+    // Pipe the client's request body to the target
+    clientReq.pipe(connector);
+});
+
+lb.listen(8000, () => {
+    console.log("⚖️  Load Balancer running on localhost:8000");
+});
+
+// TEST IT:
+// curl http://localhost:8000 -> Served by 8001
+// curl http://localhost:8000 -> Served by 8002
+// curl http://localhost:8000 -> Served by 8003</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: Why terminate SSL/TLS at the Load Balancer?</strong><br>
+                <em>Ans:</em> Decrypting HTTPS traffic is CPU intensive. If you force your 50 App Servers to do it, you waste their CPU which should be used for business logic. By terminating SSL at the LB (Edge), the traffic inside your private network (LB -> App) can be plain HTTP, which is faster and cheaper.</p>
+                
+                <p><strong>Q2: What is "Sticky Sessions" (Session Affinity)?</strong><br>
+                <em>Ans:</em> In Round Robin, User A might hit Server 1 (Login) then Server 2 (Home). Server 2 doesn't know User A logged in. <br>
+                <strong>Sticky Sessions:</strong> The LB hashes the User's IP or Cookie and ensures they <em>always</em> get sent to Server 1. (Warning: This causes uneven load distribution).</p>
+            </div>
+
+        </div>
+    </details>
+
+    <details>
+        <summary>3. Consistent Hashing (The Ring Topology) <span class="badge">Scalability</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Circle of Buckets</span>
+                <p>You have 3 buckets (Servers). You want to distribute 100 balls (Keys).</p>
+                <ul>
+                    <li><strong>The Old Way (Modulo):</strong> You number buckets 0, 1, 2. You use math: <code>Ball ID % 3</code>. <br>
+                    <em>Disaster:</em> If Bucket 2 breaks, you now have 2 buckets. The math changes to <code>Ball ID % 2</code>. Almost <strong>every single ball</strong> has to move to a new bucket. This crashes the system (Cache Stampede).</li>
+                    <li><strong>Consistent Hashing (The Ring):</strong> Imagine a clock face (0-100). You place buckets at random spots (e.g., 12:00, 4:00, 8:00). You place balls on the clock. <br>
+                    <em>Rule:</em> A ball belongs to the <strong>next bucket clockwise</strong>. <br>
+                    <em>Benefit:</em> If the bucket at 4:00 disappears, its balls just roll forward to 8:00. The balls at 12:00 are untouched.</li>
+                </ul>
+            </div>
+            
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: Virtual Nodes (VNodes)</span>
+                <p>Real servers have different capacities. Also, placing just 3 nodes on a ring leads to uneven gaps (Hotspots).</p>
+                <p><strong>The Fix: Virtual Nodes.</strong></p>
+                <p>Instead of placing "Server A" once, we hash it 100 times: "Server A-1", "Server A-2"... "Server A-100". We scatter these 100 points around the ring.</p>
+                <ul>
+                    <li><strong>Uniform Distribution:</strong> Statistically, the load becomes perfectly even.</li>
+                    <li><strong>Weighted Balancing:</strong> If Server B is twice as powerful, we give it 200 VNodes so it grabs twice the traffic.</li>
+                </ul>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Modulo vs Ring Stability</strong>
+                <p>We will simulate 100,000 keys. We will see what happens when we add ONE server.</p>
+            </div>
+
+<pre><code class="language-javascript">const crypto = require('crypto');
+
+// Helper: Turn string into number
+function hashFn(str) {
+    return parseInt(crypto.createHash('md5').update(str).digest('hex').substring(0, 8), 16);
+}
+
+const KEYS = 100000;
+const SERVERS = ['Server-A', 'Server-B', 'Server-C'];
+
+// 1. MODULO STRATEGY
+function getModuloServer(key, serverList) {
+    const hash = hashFn(key);
+    return serverList[hash % serverList.length];
+}
+
+// 2. CONSISTENT HASHING STRATEGY (Simplified)
+class ConsistentRing {
+    constructor(nodes) {
+        this.ring = []; // { hash: 123, node: 'Server-A' }
+        nodes.forEach(node => this.addNode(node));
+    }
+    
+    addNode(node) {
+        // Add 50 Virtual Nodes per server for better distribution
+        for (let i = 0; i < 50; i++) {
+            const hash = hashFn(`${node}-${i}`);
+            this.ring.push({ hash, node });
+        }
+        this.ring.sort((a, b) => a.hash - b.hash);
+    }
+
+    getNode(key) {
+        const hash = hashFn(key);
+        // Find first node > hash (Clockwise)
+        const target = this.ring.find(entry => entry.hash > hash);
+        return target ? target.node : this.ring[0].node; // Wrap around
+    }
+}
+
+// --- SIMULATION ---
+console.log(`Simulating ${KEYS} keys...`);
+
+// Scenario: We add 'Server-D'
+const oldServers = [...SERVERS];
+const newServers = [...SERVERS, 'Server-D'];
+
+// Test Modulo
+let movedModulo = 0;
+for (let i = 0; i < KEYS; i++) {
+    const key = `user-${i}`;
+    const oldS = getModuloServer(key, oldServers);
+    const newS = getModuloServer(key, newServers);
+    if (oldS !== newS) movedModulo++;
+}
+
+// Test Ring
+const ring = new ConsistentRing(oldServers);
+const beforeMap = new Map();
+for (let i = 0; i < KEYS; i++) beforeMap.set(`user-${i}`, ring.getNode(`user-${i}`));
+
+ring.addNode('Server-D'); // Add new server
+
+let movedRing = 0;
+for (let i = 0; i < KEYS; i++) {
+    const key = `user-${i}`;
+    if (beforeMap.get(key) !== ring.getNode(key)) movedRing++;
+}
+
+console.log(`\n❌ Modulo Reshuffle: ${movedModulo} keys moved (${(movedModulo/KEYS*100).toFixed(1)}%)`);
+console.log(`✅ Consistent Ring:   ${movedRing} keys moved (${(movedRing/KEYS*100).toFixed(1)}%)`);
+
+// EXPECTED OUTPUT:
+// Modulo: ~75% moved (Disaster)
+// Ring:   ~25% moved (Perfect - only 1/N keys should move)</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: What is the "Hot Key" (Celebrity) problem in Consistent Hashing?</strong><br>
+                <em>Ans:</em> If "Justin Bieber's" data maps to Server A, and millions of people request it, Server A dies. Consistent Hashing <em>alone</em> doesn't fix this because the key always hashes to the same spot. <br>
+                <em>Fix:</em> Use a separate "Celebrity Cache" or append a random number to the key (`bieber-1`, `bieber-2`) to spread the read load across multiple nodes.</p>
+                
+                <p><strong>Q2: How does Cassandra use this?</strong><br>
+                <em>Ans:</em> Cassandra uses a Token Ring. It partitions data using Consistent Hashing, but it also stores copies of data on the <strong>next N nodes</strong> clockwise (Replication Factor). If Node A dies, Node B and C already have the data.</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>4. Rate Limiting (The Token Bucket) <span class="badge">Security</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Arcade Card</span>
+                <p>Imagine an Arcade Machine (API).</p>
+                <ul>
+                    <li><strong>Credits:</strong> You get a card with 5 credits (Capacity).</li>
+                    <li><strong>Refill:</strong> The card magicially gets +1 credit every second (Refill Rate).</li>
+                    <li><strong>Playing:</strong> To play, you tap the card. If you have credits, you play. If you have 0, the machine says "Come back later" (429 Too Many Requests).</li>
+                    <li><strong>The Burst:</strong> If you wait 5 seconds, you have 5 credits. You can play 5 times <em>instantly</em> (Burst). But then you have to wait 1 second for the next credit.</li>
+                </ul>
+            </div>
+            
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: Lazy Refilling</span>
+                <p>How do we implement the "Refill"?</p>
+                <ul>
+                    <li><strong>Naive Way:</strong> `setInterval` every second to add tokens to every user. (Bad: If you have 1M users, this kills the CPU).</li>
+                    <li><strong>Smart Way (Lazy Refill):</strong> We only calculate tokens <em>when the user makes a request</em>. <br>
+                    Formula: <code>NewTokens = OldTokens + (TimePassed * RefillRate)</code>.</li>
+                </ul>
+                <p>This is O(1) math. No background timers needed.</p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Building a Token Bucket Limiter</strong>
+                <p>We will build a class that allows <strong>5 requests</strong> per second, but refills smoothly.</p>
+            </div>
+
+<pre><code class="language-javascript">class TokenBucket {
+    constructor(capacity, refillRate) {
+        this.capacity = capacity;      // Max tokens (Bucket Size)
+        this.refillRate = refillRate;  // Tokens per second
+        this.tokens = capacity;        // Current tokens
+        this.lastRefill = Date.now();  // Timestamp of last update
+    }
+
+    refill() {
+        const now = Date.now();
+        const delta = (now - this.lastRefill) / 1000; // Seconds passed
+        
+        if (delta > 0) {
+            // Add tokens based on time passed
+            const added = delta * this.refillRate;
+            this.tokens = Math.min(this.capacity, this.tokens + added);
+            this.lastRefill = now;
+        }
+    }
+
+    tryConsume() {
+        this.refill(); // 1. Update state first (Lazy)
+
+        if (this.tokens >= 1) {
+            this.tokens -= 1;
+            return true; // Allowed
+        }
+        return false; // Blocked (429)
+    }
+}
+
+// --- SIMULATION ---
+const limiter = new TokenBucket(5, 1); // Max 5, Refill 1 per sec
+
+console.log("🔥 BURSTING 10 REQUESTS...");
+
+for (let i = 1; i <= 10; i++) {
+    const allowed = limiter.tryConsume();
+    console.log(`Req ${i}: ${allowed ? '✅ Allowed' : '❌ Blocked'}`);
+}
+
+console.log("\n💤 WAITING 3 SECONDS...");
+setTimeout(() => {
+    // Should replenish ~3 tokens
+    console.log("🔥 TRYING AGAIN...");
+    for (let i = 1; i <= 5; i++) {
+        const allowed = limiter.tryConsume();
+        console.log(`Req ${i}: ${allowed ? '✅ Allowed' : '❌ Blocked'}`);
+    }
+}, 3000);
+
+// EXPECTED OUTPUT:
+// Req 1-5: ✅ Allowed (Consumed capacity)
+// Req 6-10: ❌ Blocked (Bucket empty)
+// (After 3s wait)
+// Req 1-3: ✅ Allowed (Refilled 3)
+// Req 4-5: ❌ Blocked</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: Token Bucket vs Leaky Bucket vs Fixed Window?</strong><br>
+                <em>Ans:</em>
+                <br>- <strong>Token Bucket:</strong> Allows bursts (good for user experience). Standard.
+                <br>- <strong>Leaky Bucket:</strong> Smooths output to a constant rate (good for packet queues).
+                <br>- <strong>Fixed Window:</strong> Resets at top of hour. <em>Flaw:</em> If I make 100 reqs at 11:59 and 100 at 12:01, I doubled the limit in 2 minutes. (Spike allowed).</p>
+                
+                <p><strong>Q2: How to implement this Distributed (Across 10 servers)?</strong><br>
+                <em>Ans:</em> You cannot use local memory (JavaScript Class). You must use <strong>Redis</strong>.
+                <br><em>Mechanism:</em> Use a <strong>Lua Script</strong> in Redis to perform the "Read-Refill-Write" operation atomically. This prevents race conditions where two servers try to consume the last token at the same millisecond.</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>5. CDN & Caching (Stale-While-Revalidate) <span class="badge">Performance</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Newspaper Stand</span>
+                <p>You want news from London (The Origin Server).</p>
+                <ul>
+                    <li><strong>No CDN:</strong> You fly to London, buy the paper, and fly back. (Slow).</li>
+                    <li><strong>Standard Cache (max-age):</strong> A local shop buys a stack of papers. They sell them for 24 hours. If you come at hour 25, they say "Wait, I have to fly to London." (Blocking).</li>
+                    <li><strong>Stale-While-Revalidate (SWR):</strong> The shopkeeper gives you yesterday's paper <em>instantly</em> and says "Read this while I fly to London." The <em>next</em> person gets the new paper. (Non-blocking, Instant).</li>
+                </ul>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: HTTP Cache Headers</span>
+                <p>The CDN logic is controlled by the Backend via the `Cache-Control` header.</p>
+                <ul>
+                    <li><strong>public vs private:</strong> <code>public</code> (Shared CDN can cache), <code>private</code> (Only User's Browser can cache, e.g., Profile Page).</li>
+                    <li><strong>s-maxage:</strong> Overrides `max-age` specifically for the Shared CDN (Edge), but ignored by browsers.</li>
+                    <li><strong>stale-while-revalidate (SWR):</strong> Allows the CDN to serve expired (stale) content while it fetches a fresh copy in the background.</li>
+                </ul>
+                <p><em>Formula:</em> <code>Cache-Control: s-maxage=60, stale-while-revalidate=300</code>.<br>
+                For the first 60s -> Fresh.<br>
+                From 60s to 360s -> Serve Stale (Instant) + Update Cache.<br>
+                After 360s -> Fetch Fresh (Block).</p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Simulating SWR Behavior</strong>
+                <p>We will build a Mock CDN in Node.js to prove how SWR makes slow APIs feel instant.</p>
+            </div>
+
+<pre><code class="language-javascript">const http = require('http');
+
+// --- 1. THE SLOW ORIGIN SERVER ---
+let dbValue = 0;
+setInterval(() => dbValue++, 1000); // Data changes every second
+
+http.createServer((req, res) => {
+    // Simulate slow DB query
+    setTimeout(() => {
+        console.log("-> Origin Hit!");
+        res.writeHead(200, {
+            'Content-Type': 'application/json',
+            // Cache for 2 seconds, allow stale for 10 seconds
+            'Cache-Control': 'max-age=2, stale-while-revalidate=10' 
+        });
+        res.end(JSON.stringify({ value: dbValue, timestamp: Date.now() }));
+    }, 2000); // 2 second delay
+}).listen(8001);
+
+
+// --- 2. THE CDN (PROXY) ---
+let cache = { data: null, expiry: 0, swrLimit: 0 };
+
+http.createServer((req, res) => {
+    const now = Date.now();
+
+    // A. HIT (Fresh)
+    if (cache.data && now < cache.expiry) {
+        res.setHeader('X-Cache', 'HIT');
+        return res.end(cache.data);
+    }
+
+    // B. STALE HIT (Serve old, fetch new in background)
+    if (cache.data && now < cache.swrLimit) {
+        // 1. Serve immediately
+        res.setHeader('X-Cache', 'STALE-HIT');
+        res.end(cache.data);
+        
+        // 2. Background Revalidation
+        console.log("Background Revalidating...");
+        fetchFromOrigin(); 
+        return;
+    }
+
+    // C. MISS (Block and fetch)
+    console.log("Cache Miss. Waiting...");
+    fetchFromOrigin((newData) => {
+        res.setHeader('X-Cache', 'MISS');
+        res.end(newData);
+    });
+
+}).listen(8000);
+
+function fetchFromOrigin(cb) {
+    http.get('http://localhost:8001', (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+            // Parse headers logic (simplified)
+            cache.data = body;
+            cache.expiry = Date.now() + 2000;  // max-age=2s
+            cache.swrLimit = Date.now() + 12000; // 2s + 10s swr
+            if(cb) cb(body);
+        });
+    });
+}
+
+// TEST:
+// 1. Curl localhost:8000 -> MISS (Wait 2s)
+// 2. Curl immediately -> HIT (Instant)
+// 3. Wait 3s -> Curl -> STALE-HIT (Instant, but triggers log "Origin Hit")</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: Why is cache invalidation considered the hardest problem?</strong><br>
+                <em>Ans:</em> Because when you update the Database, the Edge CDN doesn't know. The user still sees old data until the TTL expires. <br>
+                <em>Fix:</em> Use <strong>Cache Tags</strong> (Surrogate Keys). Tag a response with `product-123`. When Product 123 updates, send a PURGE request to the CDN for tag `product-123`.</p>
+                
+                <p><strong>Q2: What is the "Thundering Herd" problem?</strong><br>
+                <em>Ans:</em> When a cache key expires, 10,000 users might hit the server simultaneously to fetch the new data. <br>
+                <em>Fix:</em> <strong>Request Coalescing</strong> (The CDN identifies that 10,000 requests are for the same resource, sends ONLY 1 request to the Origin, pauses the others, and serves the result to all 10,000).</p>
+            </div>
+
+        </div>
+    </details>
+    <div class="pattern-group" style="margin-top: 50px;">
+        <h2>Module 2: The Database Layer</h2>
+
+        <details open>
+            <summary>6. Database Replication (Master-Slave) <span class="badge">Data</span></summary>
+            <div class="content">
+                
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Author and The Printers</span>
+                    <p>Imagine a famous Author (Master DB).</p>
+                    <ul>
+                        <li><strong>Writing:</strong> Only the Author can write the book. If you want to change the story, you must talk to him.</li>
+                        <li><strong>Reading:</strong> The Author is busy. So, he hires 5 Printers (Read Replicas). They copy his pages and hand them out to fans.</li>
+                        <li><strong>The Lag:</strong> The Author writes "The Hero Dies". He sends the page to the Printers. It takes 1 minute for the Printers to copy it.</li>
+                        <li><strong>The Problem:</strong> A fan talks to the Author ("Why did you kill the hero?"), then immediately grabs a book from a Printer. The Printer's copy still says "The Hero is Alive". The fan is confused. (Read-After-Write Inconsistency).</li>
+                    </ul>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Architect: Async Replication</span>
+                    <p>Most production databases use <strong>Asynchronous Replication</strong> for performance.</p>
+                    <ol>
+                        <li>App writes to Master.</li>
+                        <li>Master returns "Success" immediately.</li>
+                        <li>Master sends the <strong>WAL (Write Ahead Log)</strong> or <strong>Binlog</strong> to Slaves in the background.</li>
+                    </ol>
+                    <p><strong>The Consequence: Replication Lag.</strong> <br>
+                    If a user updates their profile and refreshes the page immediately, the GET request might hit a Slave that hasn't received the update yet.</p>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <strong>🔬 Code Experiment: Simulating Replication Lag</strong>
+                    <p>We will build a Master DB and a Slave DB. We will introduce a random delay to the Slave.</p>
+                </div>
+
+<pre><code class="language-javascript">class Database {
+    constructor(name) {
+        this.name = name;
+        this.data = { balance: 100 }; // Initial State
+    }
+
+    read() {
+        return this.data.balance;
+    }
+
+    write(val) {
+        this.data.balance = val;
+        console.log(`[${this.name}] Updated to ${val}`);
+    }
+}
+
+// 1. Setup Architecture
+const Master = new Database("Master");
+const Slave = new Database("Slave");
+
+// 2. Replication Logic (The Pipeline)
+function replicateToSlave(value) {
+    // Simulate Network Delay (100ms - 500ms)
+    const delay = Math.random() * 400 + 100;
+    setTimeout(() => {
+        Slave.write(value);
+        console.log(`-> Replicated to Slave after ${delay.toFixed(0)}ms`);
+    }, delay);
+}
+
+// 3. User Flow
+console.log("User: I am depositing $50...");
+const newValue = 150;
+
+// Step A: Write to Master
+Master.write(newValue);
+replicateToSlave(newValue); // Async process
+
+// Step B: Immediate Read (The Problem)
+// User refreshes page instantly
+setTimeout(() => {
+    // Load Balancer routes Read to Slave
+    const balance = Slave.read();
+    
+    if (balance === newValue) {
+        console.log("✅ User sees correct balance:", balance);
+    } else {
+        console.log("❌ STALE READ! User sees old balance:", balance);
+        console.log("   (User panics: 'Where is my money??')");
+    }
+}, 50); // User reads 50ms later</code></pre>
+
+                <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                    <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                    
+                    <p><strong>Q1: How do you fix "Read-After-Write" inconsistency?</strong><br>
+                    <em>Ans:</em>
+                    <br>1. <strong>Pinning:</strong> For critical views (like "My Profile"), always read from Master.
+                    <br>2. <strong>Sticky Routing:</strong> Track the "Last Write Timestamp" in a cookie. If the Slave's data is older than that timestamp, forward the request to Master.
+                    </p>
+                    
+                    <p><strong>Q2: Why not use Synchronous Replication?</strong><br>
+                    <em>Ans:</em> It kills availability. If you require the Master + All Slaves to confirm the write before returning "Success", then if <em>one</em> Slave goes offline, your entire database stops accepting writes.</p>
+                </div>
+
+            </div>
+        </details>
+        <details>
+        <summary>7. Database Sharding (Horizontal Partitioning) <span class="badge">Scalability</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Library System</span>
+                <p>You have a library with 1 million books. It's too big for one building.</p>
+                <ul>
+                    <li><strong>No Sharding:</strong> You build a bigger building. (Vertical Scaling). Expensive.</li>
+                    <li><strong>Sharding:</strong> You build 4 smaller buildings.</li>
+                    <li><strong>The Rule (Routing):</strong> You split books by Author Name.
+                        <br>- Building 1: Authors A-G
+                        <br>- Building 2: Authors H-M
+                        <br>- Building 3: Authors N-S
+                        <br>- Building 4: Authors T-Z
+                    </li>
+                </ul>
+                <p><strong>The Catch:</strong> If you want to find "All books about Cats", you have to visit <strong>every single building</strong> (Scatter-Gather Query). That is slow.</p>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: The Shard Key</span>
+                <p>Sharding partitions data rows across multiple independent database instances (Shards).</p>
+                <p>The most critical decision is the <strong>Shard Key</strong>.</p>
+                <ul>
+                    <li><strong>User ID:</strong> Good for "Load User Profile". All user data sits on one shard. Bad for "Analytics" (scanning all users).</li>
+                    <li><strong>Geo/Region:</strong> Good for latency (US users on US shard). Bad if one region (NYC) is 10x bigger than another (Kansas) -> <strong>Data Skew</strong>.</li>
+                </ul>
+                <p><em>Constraint:</em> You lose ACID transactions across shards. You cannot easily `JOIN` Table A (Shard 1) with Table B (Shard 2).</p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Building a Shard Router</strong>
+                <p>We will simulate 3 database shards. We will write a Router that decides where to save data based on `userId`.</p>
+            </div>
+
+<pre><code class="language-javascript">const crypto = require('crypto');
+
+// 1. Mock Database (The Shard)
+class DBShard {
+    constructor(id) {
+        this.id = id;
+        this.store = new Map();
+    }
+    save(key, val) { 
+        console.log(`[Shard ${this.id}] Saved ${key}`);
+        this.store.set(key, val); 
+    }
+    get(key) { return this.store.get(key); }
+}
+
+// 2. The Infrastructure (3 Shards)
+const shards = [
+    new DBShard('A'), // Stores Users 0-33
+    new DBShard('B'), // Stores Users 34-66
+    new DBShard('C')  // Stores Users 67-100
+];
+
+// 3. The Router (Application Logic)
+function getShard(userId) {
+    // Simple Modulo Sharding
+    // In production, use Consistent Hashing (see Q3)
+    const shardIndex = userId % shards.length;
+    return shards[shardIndex];
+}
+
+// --- USAGE ---
+
+// WRITE: Route to specific shard
+function createUser(id, name) {
+    const targetShard = getShard(id);
+    targetShard.save(id, { name });
+}
+
+createUser(101, "Alice"); // 101 % 3 = 2 -> Shard C
+createUser(102, "Bob");   // 102 % 3 = 0 -> Shard A
+createUser(103, "Charlie"); // 103 % 3 = 1 -> Shard B
+
+// READ: Route to specific shard
+const user = getShard(101).get(101); 
+console.log("Read Result:", user);
+
+// SCATTER-GATHER (The Expensive Query)
+// "Find all users named Alice?"
+// We don't know the ID, so we don't know the Shard.
+// We must query ALL shards.
+function findByName(name) {
+    console.log("\nStarting Scatter-Gather Query...");
+    const results = [];
+    
+    // Parallel query to all shards
+    shards.forEach(shard => {
+        console.log(`Scanning Shard ${shard.id}...`);
+        for (const [id, u] of shard.store) {
+            if (u.name === name) results.push(u);
+        }
+    });
+    return results;
+}
+
+findByName("Alice");</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: What is the "Jumbo Shard" (Data Skew) problem?</strong><br>
+                <em>Ans:</em> If you shard by "Company ID", and you sign up Apple (50,000 employees) and a local bakery (5 employees), the "Apple Shard" will explode while the "Bakery Shard" sits idle. <br>
+                <em>Fix:</em> Add a suffix to the shard key for large tenants (`Apple-1`, `Apple-2`).</p>
+                
+                <p><strong>Q2: Can I do a JOIN across shards?</strong><br>
+                <em>Ans:</em> <strong>No.</strong> SQL databases cannot join tables on different physical machines efficiently. <br>
+                <em>Workaround:</em> Do the Join in the <strong>Application Layer</strong>. Fetch IDs from Shard A, then fetch details from Shard B. (Inefficient but necessary).</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>8. The CAP Theorem (CP vs AP) <span class="badge">Theory</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Wedding Invitation</span>
+                <p>You and your spouse (Two Servers) are inviting people to a wedding. You have a list. Suddenly, your phone reception dies (Partition).</p>
+                <p>A guest calls <em>you</em> to update their address.</p>
+                <ul>
+                    <li><strong>CP (Consistency):</strong> You say: "Sorry, I can't talk to my spouse right now to confirm the list. Call back later." (You refused the work to prevent errors).</li>
+                    <li><strong>AP (Availability):</strong> You say: "Sure! I'll update my list." (You accepted the work). BUT... your spouse might be accepting a <em>different</em> address for the same person on their list. Now you have a Conflict.</li>
+                </ul>
+            </div>
+            
+
+[Image of CAP theorem venn diagram]
+
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: The Network is Not Reliable</span>
+                <p><strong>C (Consistency):</strong> Every read receives the most recent write or an error.</p>
+                <p><strong>A (Availability):</strong> Every request receives a (non-error) response, without the guarantee that it contains the most recent write.</p>
+                <p><strong>P (Partition Tolerance):</strong> The system continues to operate despite an arbitrary number of messages being dropped or delayed by the network.</p>
+                <p><strong>The Law:</strong> In a distributed system, <strong>P</strong> is unavoidable (cables get cut). So you must choose between <strong>CP</strong> (MongoDB, Redis, Banking) or <strong>AP</strong> (Cassandra, Twitter Feed, Shopping Carts).</p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Simulating a Split Brain</strong>
+                <p>We create a Cluster class. We can toggle "Network Failure". We see how CP and AP modes react.</p>
+            </div>
+
+<pre><code class="language-javascript">class Node {
+    constructor(id, mode) {
+        this.id = id;
+        this.data = "Version 1";
+        this.mode = mode; // 'CP' or 'AP'
+        this.networkUp = true;
+    }
+
+    write(newData) {
+        if (!this.networkUp) {
+            // DECISION TIME
+            if (this.mode === 'CP') {
+                throw new Error("⚠️ CP Mode: Cannot reach quorum. Write Rejected.");
+            } 
+            else if (this.mode === 'AP') {
+                console.log(`[${this.id}] ⚠️ Network Down. Accepting write anyway (Divergence).`);
+                this.data = newData; // Local update only
+                return;
+            }
+        }
+        this.data = newData;
+        console.log(`[${this.id}] Write Success: ${newData}`);
+    }
+}
+
+// 1. Setup Architecture
+const nodeA = new Node('NodeA', 'CP'); // Try changing this to 'AP'
+const nodeB = new Node('NodeB', 'CP');
+
+console.log("--- SCENARIO: Network Cut ---");
+nodeA.networkUp = false; // Cable cut
+
+try {
+    console.log("Client tries to write to Node A...");
+    nodeA.write("Version 2");
+} catch (e) {
+    console.log(e.message);
+}
+
+// Result if CP: Error (System Down, Data Safe)
+// Result if AP: Success (System Up, Data Inconsistent with Node B)</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: Can I have a CA system?</strong><br>
+                <em>Ans:</em> <strong>No.</strong> CA implies you have Consistency and Availability but <em>no Partition Tolerance</em>. This effectively means "A Single Server". In a distributed system, network partitions <em>will</em> happen. You cannot opt out of P.</p>
+                
+                <p><strong>Q2: What is PACELC?</strong><br>
+                <em>Ans:</em> An extension of CAP. It says: "If there is a Partition (P), choose A or C. Else (E), if the system is running normal (L), choose between <strong>Latency</strong> or <strong>Consistency</strong>." <br>
+                <em>Meaning:</em> Even when the network is fine, do you want to wait for ALL nodes to acknowledge a write (Consistency, High Latency) or just one (Low Latency, risk of stale reads)?</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>9. Transactions & Locking (ACID vs Race Conditions) <span class="badge">Data</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Double Booking</span>
+                <p>Imagine a cinema with 1 seat left.</p>
+                <ul>
+                    <li><strong>The Race:</strong> Alice and Bob both click "Buy" at 12:00:00.001.</li>
+                    <li><strong>The Failure:</strong> The system checks for Alice: "Seat available?" -> Yes. The system checks for Bob: "Seat available?" -> Yes. Both pay. Both get a ticket. Now two people show up for one seat.</li>
+                    <li><strong>Pessimistic Locking:</strong> Alice locks the door to the ticket booth. Bob has to wait outside in the rain until Alice leaves. (Safe but Slow).</li>
+                    <li><strong>Optimistic Locking:</strong> Both buy a ticket. But the tickets have version numbers. Alice submits Version 1. Bob submits Version 1. The system accepts Alice, bumps the version to 2, and rejects Bob saying "Your version is old." (Fast but Reject-heavy).</li>
+                </ul>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: Isolation Levels</span>
+                <p><strong>ACID:</strong> Atomicity, Consistency, Isolation, Durability.</p>
+                <p><strong>Isolation Levels (The Trade-off):</strong></p>
+                <ul>
+                    <li><strong>Read Uncommitted:</strong> Fast, dangerous. Dirty Reads allowed.</li>
+                    <li><strong>Read Committed:</strong> Standard. No dirty reads.</li>
+                    <li><strong>Serializable:</strong> Slowest, safest. Executes transactions sequentially (effectively).</li>
+                </ul>
+                <p><strong>Locking Strategies:</strong></p>
+                <ul>
+                    <li><strong>Pessimistic:</strong> <code>SELECT * FROM seats FOR UPDATE;</code> (Database holds a real lock row).</li>
+                    <li><strong>Optimistic:</strong> Add a `version` column. <code>UPDATE seats SET booked=true, version=2 WHERE id=1 AND version=1;</code>. If rows affected = 0, someone else stole it.</li>
+                </ul>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Fixing a Race Condition</strong>
+                <p>We simulate the "Lost Update" problem and fix it using Optimistic Locking.</p>
+            </div>
+
+<pre><code class="language-javascript">// THE DATABASE ROW
+let seat = {
+    id: 1,
+    status: 'AVAILABLE',
+    version: 1 // The Optimistic Lock Key
+};
+
+// SIMULATED LATENCY (The cause of race conditions)
+const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function bookSeat(user) {
+    console.log(`[${user}] Checking seat...`);
+    
+    // 1. READ (Capture state + version)
+    const currentSeat = { ...seat }; 
+    await delay(100); // Network Lag
+
+    // 2. CHECK
+    if (currentSeat.status === 'BOOKED') {
+        console.log(`❌ [${user}] Failed. Already booked.`);
+        return;
+    }
+
+    // 3. WRITE (The Critical Section)
+    console.log(`[${user}] Trying to pay...`);
+    await delay(100); // Payment Processing Lag
+
+    // --- CRITICAL FIX: OPTIMISTIC LOCK CHECK ---
+    // We verify the version hasn't changed since we read it.
+    if (seat.version !== currentSeat.version) {
+        console.log(`⛔ [${user}] Transaction Aborted! Data changed by someone else.`);
+        return;
+    }
+
+    // Commit
+    seat.status = 'BOOKED';
+    seat.bookedBy = user;
+    seat.version++; // Bump version
+    console.log(`✅ [${user}] Booking Confirmed! (Version ${seat.version})`);
+}
+
+// EXECUTION: Two users run in parallel
+console.log("--- STARTING RACE ---");
+bookSeat("Alice");
+bookSeat("Bob");
+
+// EXPECTED OUTPUT WITHOUT LOCK:
+// Alice checks -> Available
+// Bob checks -> Available
+// Alice pays -> Booked
+// Bob pays -> Overwrites Alice! (Lost Update)
+
+// EXPECTED OUTPUT WITH LOCK:
+// Alice confirms. Version becomes 2.
+// Bob tries to write using Version 1. Failed.</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: When should I use Optimistic vs Pessimistic locking?</strong><br>
+                <em>Ans:</em>
+                <br>- <strong>Optimistic:</strong> Low contention (e.g., Editing a Wiki page). Collisions are rare. Better performance because no DB locks are held.
+                <br>- <strong>Pessimistic:</strong> High contention (e.g., Buying concert tickets). Collisions are guaranteed. It is better to queue users than to let them fail at the last step.</p>
+                
+                <p><strong>Q2: What is a "Deadlock"?</strong><br>
+                <em>Ans:</em> Process A holds Lock 1 and waits for Lock 2. Process B holds Lock 2 and waits for Lock 1. Both wait forever. <br>
+                <em>Fix:</em> Always acquire locks in the same order (e.g., sort by ID) or use timeouts.</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>10. Storage Engines: B-Trees vs LSM Trees <span class="badge">Database Internals</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Library vs The Journal</span>
+                <ul>
+                    <li><strong>B-Tree (MySQL/Postgres):</strong> Think of a Library. Books are perfectly sorted alphabetically.
+                        <br>- <em>Reading:</em> Fast. You go straight to the shelf.
+                        <br>- <em>Writing:</em> Slow. To insert a book "G", you have to shift all books H-Z to make space.
+                    </li>
+                    <li><strong>LSM Tree (Cassandra/RocksDB):</strong> Think of a Daily Journal.
+                        <br>- <em>Writing:</em> Extremely Fast. You just write on the next blank line. You never erase.
+                        <br>- <em>Reading:</em> Slower. You have to read yesterday's journal, today's journal, and the sticky notes to find the latest update on "User A".
+                    </li>
+                </ul>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: Random vs Sequential I/O</span>
+                <p><strong>B-Trees (Read Optimized):</strong> Data is stored in pages (4KB). To update a row, the disk head must jump to that specific spot (Random I/O). Great for Reads, bad for massive Writes.</p>
+                <p><strong>LSM Trees (Write Optimized):</strong>
+                <br>1. <strong>MemTable:</strong> Writes go to RAM first (Sorted).
+                <br>2. <strong>SSTable:</strong> When RAM fills, it is flushed to disk as an immutable file (Sequential I/O).
+                <br>3. <strong>Compaction:</strong> Background process merges old files to clean up deleted data.</p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Append vs Insert Speed</strong>
+                <p>We will simulate writing 10,000 records.
+                <br>- <strong>LSM Style:</strong> Just append to array end.
+                <br>- <strong>B-Tree Style:</strong> Keep array sorted (Binary Insert) at every step.</p>
+            </div>
+
+<pre><code class="language-javascript">const RECORDS = 50000;
+const data = [];
+
+// 1. LSM Tree Simulation (Log Structured)
+// Writes are O(1) - Just Append.
+console.time('LSM Write (Append)');
+for (let i = 0; i < RECORDS; i++) {
+    const randomVal = Math.random();
+    data.push(randomVal);
+}
+console.timeEnd('LSM Write (Append)');
+
+
+// 2. B-Tree Simulation (Sorted Structure)
+// Writes are O(N) or O(log N) shift - Must maintain order.
+const sortedData = [];
+
+// Helper: Find index and splice (expensive!)
+function binaryInsert(val) {
+    let low = 0, high = sortedData.length;
+    while (low < high) {
+        let mid = (low + high) >>> 1;
+        if (sortedData[mid] < val) low = mid + 1;
+        else high = mid;
+    }
+    // The "Shift" operation
+    sortedData.splice(low, 0, val);
+}
+
+console.time('B-Tree Write (Sort on Insert)');
+for (let i = 0; i < RECORDS; i++) {
+    const randomVal = Math.random();
+    binaryInsert(randomVal);
+}
+console.timeEnd('B-Tree Write (Sort on Insert)');
+
+// TYPICAL OUTPUT:
+// LSM Write: 2ms
+// B-Tree Write: 2500ms (1000x Slower!)
+// Conclusion: Use LSM (Cassandra) for Chat Logs/Events.</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: Why is an LSM Tree read slower?</strong><br>
+                <em>Ans:</em> Because the data for "User A" might exist in the MemTable (RAM) AND in 5 different SSTables (Disk) from last week. The DB has to check all of them to find the latest version. <br><em>Optimization:</em> <strong>Bloom Filters</strong> are used to instantly tell if an SSTable does <em>not</em> have the key, skipping unnecessary disk reads.</p>
+                
+                <p><strong>Q2: When would you choose Postgres over Cassandra?</strong><br>
+                <em>Ans:</em>
+                <br>- <strong>Postgres (B-Tree):</strong> If you need ACID transactions, complex JOINs, or secondary indexes. (E.g., Banking, User Profiles).
+                <br>- <strong>Cassandra (LSM):</strong> If you need massive write throughput (IoT sensor logs, Chat messages) and don't care about JOINs.</p>
+            </div>
+
+        </div>
+    </details>
+    <div class="pattern-group" style="margin-top: 50px;">
+        <h2>Module 3: Distributed Patterns (Resilience)</h2>
+
+        <details open>
+            <summary>11. Idempotency (The Double Charge Fix) <span class="badge">Critical</span></summary>
+            <div class="content">
+                
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Forgetful Waiter</span>
+                    <p>You order a steak. The waiter leaves.</p>
+                    <p>5 minutes later, you aren't sure if he heard you. You call him back and say "I ordered a steak."</p>
+                    <ul>
+                        <li><strong>Non-Idempotent:</strong> The waiter writes down "Steak" again. You get 2 steaks. You pay for 2. (Bad).</li>
+                        <li><strong>Idempotent:</strong> You give the waiter a ticket with ID #101. He checks his pad. "Oh, Ticket #101? I already wrote that down. It's cooking." He does <em>nothing</em> but tells you "Success". (Good).</li>
+                    </ul>
+                </div>
+                
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Architect: The Idempotency Key</span>
+                    <p>The client generates a unique ID (UUID) for every state-changing request (POST/PATCH) and sends it in the header: <code>Idempotency-Key: abc-123</code>.</p>
+                    <p><strong>The Server Logic:</strong></p>
+                    <ol>
+                        <li>Receive Request. Check Key in Redis/DB.</li>
+                        <li><strong>If Found:</strong> Return the <em>saved response</em> from the previous successful attempt. Do NOT process logic again.</li>
+                        <li><strong>If Not Found:</strong> Process logic. Save the Key + Response. Return result.</li>
+                    </ol>
+                    <p><em>Requirement:</em> The check and the save must be atomic (or use DB Unique Constraints) to prevent race conditions.</p>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <strong>🔬 Code Experiment: Building an Idempotent Payment API</strong>
+                    <p>We simulate a flaky network where the user clicks "Pay" twice.</p>
+                </div>
+
+<pre><code class="language-javascript">const processedKeys = new Map(); // Simulating Redis
+
+function processPayment(req) {
+    const key = req.headers['idempotency-key'];
+    const amount = req.body.amount;
+
+    console.log(`\n[Server] Received Request. Key: ${key}`);
+
+    // 1. CHECK (Have we seen this key?)
+    if (processedKeys.has(key)) {
+        console.log("🛑 Duplicate Detected! Returning cached response.");
+        return processedKeys.get(key); // Return saved result
+    }
+
+    // 2. PROCESS (The expensive operation)
+    console.log(`💳 Charging Credit Card $${amount}...`);
+    const newBalance = 1000 - amount; // Logic
+
+    // 3. SAVE (Store result mapped to Key)
+    const response = { status: 'Success', newBalance, txId: Math.random() };
+    processedKeys.set(key, response);
+
+    console.log("✅ Charge Complete.");
+    return response;
+}
+
+// --- SCENARIO ---
+const request = {
+    headers: { 'idempotency-key': 'uuid-555' },
+    body: { amount: 100 }
+};
+
+// First Call (Network Success)
+console.log("--- Attempt 1 ---");
+console.log(processPayment(request));
+
+// Second Call (Retry caused by network timeout)
+console.log("--- Attempt 2 (Retry) ---");
+console.log(processPayment(request));
+
+// EXPECTED OUTPUT:
+// Attempt 1: "Charging Credit Card..." -> Success
+// Attempt 2: "Duplicate Detected!" -> Returns SAME Success object. 
+// Card is NOT charged twice.</code></pre>
+
+                <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                    <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                    
+                    <p><strong>Q1: Where do you store the Idempotency Keys?</strong><br>
+                    <em>Ans:</em> Ideally in a persistent store with a TTL (Time To Live).
+                    <br>- <strong>Redis:</strong> Fast, supports TTL (e.g., keys expire after 24 hours).
+                    <br>- <strong>Database Table:</strong> Use a `processed_requests` table. Transactional safety (ACID) is easier here—you can insert the key and the order in the same transaction.</p>
+                    
+                    <p><strong>Q2: What happens if the server crashes *after* charging but *before* saving the key?</strong><br>
+                    <em>Ans:</em> This is the hard edge case.
+                    <br><em>Fix:</em> Use <strong>Distributed Transactions</strong> (Two-Phase Commit) or ensure the downstream service (Stripe) supports idempotency so you can retry the charge safely.</p>
+                </div>
+
+            </div>
+        </details>
+        <details>
+        <summary>12. Distributed Locks (Redis Redlock) <span class="badge">Concurrency</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Bathroom Key</span>
+                <p>You have a large office (Cluster) with 10 employees (Servers) and only 1 bathroom (The Critical Task).</p>
+                <p><strong>The Rule:</strong> To use the bathroom, you must grab the <strong>Key</strong> from the reception desk (Redis). There is only one key.</p>
+                <ul>
+                    <li><strong>Acquire:</strong> Employee A runs to the desk. The key is there. He takes it. He enters the bathroom.</li>
+                    <li><strong>Block:</strong> Employee B runs to the desk. The key is gone. She has to go back to her desk and wait.</li>
+                    <li><strong>The Safety Feature (TTL):</strong> What if Employee A climbs out the window (Crashes) and takes the key home? The reception desk has a spare key that automatically appears after 5 minutes (Expiry). This prevents the bathroom from being locked forever.</li>
+                </ul>
+            </div>
+            
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: SET NX PX</span>
+                <p>The simplest way to implement a distributed lock is using Redis.</p>
+                <p><strong>The Command:</strong> <code>SET resource_name my_random_id NX PX 30000</code></p>
+                <ul>
+                    <li><strong>NX (Not Exists):</strong> Only set the key if it does NOT exist. If it exists, return failure (someone else has the lock).</li>
+                    <li><strong>PX 30000:</strong> Auto-expire (TTL) after 30 seconds. This handles the "Crash" scenario.</li>
+                    <li><strong>my_random_id:</strong> A unique token (UUID) to ensure that only the person who <em>locked</em> it can <em>unlock</em> it (Safety check).</li>
+                </ul>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Racing for the Lock</strong>
+                <p>We simulate 3 workers trying to run the "Daily Report".</p>
+            </div>
+
+<pre><code class="language-javascript">// Mock Redis Class
+class RedisStub {
+    constructor() {
+        this.store = new Map();
+    }
+
+    // Atomic SET NX
+    set(key, value, option, expiry) {
+        if (this.store.has(key)) return null; // Failed to acquire
+        
+        // Success
+        this.store.set(key, { value, expires: Date.now() + expiry });
+        console.log(`[Redis] Lock '${key}' acquired by ${value}`);
+        return "OK";
+    }
+}
+
+const redis = new RedisStub();
+
+function tryRunDailyJob(workerId) {
+    const lockKey = "daily_report_lock";
+    
+    // 1. Try to acquire lock
+    // "NX" logic is inside our stub
+    const result = redis.set(lockKey, workerId, 'NX', 10000); // 10s TTL
+
+    if (result === "OK") {
+        console.log(`✅ Worker ${workerId}: I got the lock! Running job...`);
+        // Run logic...
+    } else {
+        console.log(`❌ Worker ${workerId}: Lock busy. I will skip this time.`);
+    }
+}
+
+// SIMULATION: All 3 workers wake up at 9:00:00 AM
+console.log("--- 9:00 AM Cron Trigger ---");
+tryRunDailyJob("Server-A");
+tryRunDailyJob("Server-B");
+tryRunDailyJob("Server-C");
+
+// EXPECTED OUTPUT:
+// [Redis] Lock 'daily_report_lock' acquired by Server-A
+// ✅ Worker Server-A: I got the lock! Running job...
+// ❌ Worker Server-B: Lock busy. I will skip this time.
+// ❌ Worker Server-C: Lock busy. I will skip this time.</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: What is the "Zombie Process" problem with locks?</strong><br>
+                <em>Ans:</em> Worker A gets the lock (TTL 10s). Worker A freezes (GC Pause) for 15s. Redis releases the lock. Worker B gets the lock. Worker A wakes up and thinks it still holds the lock. Now BOTH are running the job. <br>
+                <em>Fix:</em> Use a <strong>Fencing Token</strong>. The lock returns a number (1, 2, 3). The Database rejects any write with a token older than the current highest token.</p>
+                
+                <p><strong>Q2: Why not use a Database Row Lock (SELECT FOR UPDATE)?</strong><br>
+                <em>Ans:</em> You can, and it's safer (ACID). But it puts load on your primary DB. If you have 10,000 workers polling for a lock every second, your DB will choke. Redis is built for this high-throughput locking.</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>13. Circuit Breakers (Stopping Cascading Failures) <span class="badge">Resilience</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Electrical Fuse</span>
+                <p>Your house has a fuse box.</p>
+                <ul>
+                    <li><strong>Normal (Closed):</strong> Electricity flows to the microwave. Everything is fine.</li>
+                    <li><strong>Surge (Failure):</strong> The microwave malfunctions and tries to pull too much power. It gets hot.</li>
+                    <li><strong>Trip (Open):</strong> The fuse *blows* (Opens). It physically cuts the wire. Now, electricity *cannot* reach the microwave. This saves your house from burning down.</li>
+                    <li><strong>Reset (Half-Open):</strong> After 5 minutes, you flip the switch halfway to test. If the microwave explodes again, it trips immediately. If it works, the connection is restored fully.</li>
+                </ul>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: The 3 States</span>
+                <p>A Circuit Breaker wraps a function call (e.g., API request). It tracks failures.</p>
+                <ol>
+                    <li><strong>CLOSED (Normal):</strong> Traffic flows. If failure count > threshold (e.g., 5 failures), move to OPEN.</li>
+                    <li><strong>OPEN (Broken):</strong> Fails *immediately* without calling the downstream service. Prevents waiting for timeouts. Starts a "Cooldown Timer".</li>
+                    <li><strong>HALF-OPEN (Test):</strong> Timer finished. Allow *one* test request through. <br>
+                        - If success: Reset to CLOSED. <br>
+                        - If fail: Go back to OPEN.</li>
+                </ol>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Building a Breaker</strong>
+                <p>We wrap a "Flaky API" that fails 70% of the time. Watch the Breaker trip.</p>
+            </div>
+
+<pre><code class="language-javascript">class CircuitBreaker {
+    constructor() {
+        this.state = 'CLOSED'; 
+        this.failures = 0;
+        this.threshold = 3;    // Trip after 3 fails
+        this.cooldown = 2000;  // Wait 2s before testing
+    }
+
+    async call(serviceFn) {
+        // 1. FAIL FAST
+        if (this.state === 'OPEN') {
+            console.log("🔥 Circuit OPEN. Blocking request instantly.");
+            return;
+        }
+
+        try {
+            // 2. TRY EXECUTION
+            await serviceFn();
+            console.log("✅ Success!");
+            this.reset();
+        } catch (e) {
+            // 3. HANDLE FAILURE
+            this.failures++;
+            console.log(`❌ Failed (${this.failures}/${this.threshold})`);
+            
+            if (this.failures >= this.threshold) {
+                this.trip();
+            }
+        }
+    }
+
+    trip() {
+        console.log("⚠️ FAILURE THRESHOLD REACHED. TRIPPING CIRCUIT!");
+        this.state = 'OPEN';
+        
+        // Schedule 'Half-Open' test
+        setTimeout(() => {
+            console.log("🕐 Cooldown over. Entering HALF-OPEN state...");
+            this.state = 'HALF-OPEN';
+        }, this.cooldown);
+    }
+
+    reset() {
+        this.failures = 0;
+        this.state = 'CLOSED';
+    }
+}
+
+// --- SCENARIO ---
+const breaker = new CircuitBreaker();
+
+// A Service that fails every time
+const flakyService = () => new Promise((_, reject) => reject("500 Error"));
+
+// Simulate 5 rapid requests
+async function run() {
+    for (let i = 1; i <= 6; i++) {
+        console.log(`\nReq ${i}:`);
+        await breaker.call(flakyService);
+        await new Promise(r => setTimeout(r, 200)); // wait a bit
+    }
+    
+    // Wait for cooldown and try again
+    await new Promise(r => setTimeout(r, 2200));
+    console.log("\nReq 7 (After Cooldown):");
+    await breaker.call(() => Promise.resolve()); // Simulating service fixed
+}
+
+run();
+
+// EXPECTED LOGS:
+// Req 1-3: Failed
+// Req 4: Circuit OPEN (Blocked instantly)
+// Req 5: Circuit OPEN (Blocked instantly)
+// (After 2s)
+// Req 7: Success! (Circuit resets to CLOSED)</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: Why not just use "Retry" logic?</strong><br>
+                <em>Ans:</em> <strong>Retry Storms.</strong> If Service B is struggling (overloaded), and 1,000 instances of Service A all decide to retry 3 times, you just hit Service B with 3,000 extra requests. You will DDoS your own service and ensure it never recovers. Circuit Breakers give the downstream service time to breathe.</p>
+                
+                <p><strong>Q2: What is the Bulkhead Pattern?</strong><br>
+                <em>Ans:</em> A ship is divided into watertight compartments. If one floods, the ship doesn't sink. <br>
+                <em>In Software:</em> You use separate Thread Pools (or Connection Pools) for different services. If the "Image Processing" service pool is exhausted/hanging, the "User Login" pool is unaffected. You isolate failures.</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>14. Long Polling vs WebSockets vs SSE <span class="badge">Networking</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The "Are We There Yet?" Game</span>
+                <p>You are waiting for a package.</p>
+                <ul>
+                    <li><strong>Short Polling:</strong> You ask "Is it here?" every 1 second. The clerk says "No". You leave and come back immediately. (Annoying, wastes energy).</li>
+                    <li><strong>Long Polling:</strong> You ask "Is it here?" The clerk <em>doesn't answer</em>. He stands there holding the door open until the package actually arrives. Then he gives it to you and closes the door. You immediately knock again for the next package.</li>
+                    <li><strong>WebSockets:</strong> You install a dedicated telephone line between your house and the clerk. You can both talk instantly anytime.</li>
+                    <li><strong>Server-Sent Events (SSE):</strong> The clerk buys a megaphone (Radio). You just listen. He shouts updates whenever they happen. You can't shout back.</li>
+                </ul>
+            </div>
+            
+
+[Image of inter process communication diagram]
+
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: Overhead vs Latency</span>
+                <table style="width:100%; border-collapse: collapse; margin-bottom: 10px; font-size: 0.9rem;">
+                    <tr style="border-bottom: 1px solid #334155;">
+                        <th style="text-align: left;">Protocol</th>
+                        <th style="text-align: left;">Direction</th>
+                        <th style="text-align: left;">Pros/Cons</th>
+                    </tr>
+                    <tr>
+                        <td><strong>WebSockets</strong></td>
+                        <td>Bi-directional</td>
+                        <td>Low latency. Ideal for Chat/Games. Hard to scale (Stateful).</td>
+                    </tr>
+                    <tr>
+                        <td><strong>SSE</strong></td>
+                        <td>Server-to-Client</td>
+                        <td>Simple HTTP. Ideal for News Feeds/Stock Tickers. Easy to scale.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Long Polling</strong></td>
+                        <td>Uni-directional</td>
+                        <td>Works everywhere (even old browsers). High header overhead (Resending auth headers every time).</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: SSE vs Long Polling in Node</strong>
+                <p>We will build a Stock Ticker. Notice how SSE keeps the connection open forever, while Long Polling closes it immediately after data.</p>
+            </div>
+
+<pre><code class="language-javascript">const http = require('http');
+
+let stockPrice = 100;
+setInterval(() => stockPrice++, 2000); // Price updates every 2s
+
+http.createServer((req, res) => {
+    
+    // 1. SERVER-SENT EVENTS (The Radio)
+    if (req.url === '/sse') {
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+        });
+
+        const interval = setInterval(() => {
+            // Stream data without closing connection
+            res.write(`data: ${JSON.stringify({ price: stockPrice })}\n\n`);
+        }, 1000);
+
+        req.on('close', () => clearInterval(interval)); // Cleanup
+    }
+
+    // 2. LONG POLLING (The Waiting Clerk)
+    else if (req.url === '/poll') {
+        const initialPrice = stockPrice;
+        
+        // Wait until price changes
+        const check = setInterval(() => {
+            if (stockPrice !== initialPrice) {
+                res.end(JSON.stringify({ price: stockPrice })); // Close connection!
+                clearInterval(check);
+            }
+        }, 100);
+    }
+
+}).listen(8000);
+
+// TEST SSE: curl -N http://localhost:8000/sse
+// TEST POLLING: curl http://localhost:8000/poll (Blocks for 2s)</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: How do you scale WebSockets to 100 servers?</strong><br>
+                <em>Ans:</em> WebSockets are stateful (The TCP connection lives on Server A). If User 1 is on Server A and User 2 is on Server B, they can't chat directly. <br>
+                <em>Fix:</em> You need a **Pub/Sub Redis** backplane. Server A publishes "Message for User 2" to Redis. Server B subscribes to Redis, picks it up, and pushes it down the WebSocket to User 2.</p>
+                
+                <p><strong>Q2: Why use SSE instead of WebSockets?</strong><br>
+                <em>Ans:</em>
+                1. <strong>Firewalls:</strong> Corporate firewalls often block non-HTTP protocols (WebSockets start as HTTP but upgrade to raw TCP). SSE is pure HTTP/Text.
+                2. <strong>Reconnection:</strong> SSE has built-in auto-reconnect functionality in the browser. WebSockets require manual retry logic.</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>15. Bloom Filters (Probabilistic Data Structures) <span class="badge">Big Data</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Bouncer's Memory</span>
+                <p>Imagine a Bouncer at a club with a VIP list of 1 million names.</p>
+                <ul>
+                    <li><strong>The Database Way:</strong> The Bouncer reads the entire list every time someone arrives. (Slow).</li>
+                    <li><strong>The Bloom Filter Way:</strong> The Bouncer takes a marker. When "Alice" arrives, he colors a Red dot on his hand. When "Bob" arrives, he colors a Blue dot.</li>
+                    <li><strong>The Check:</strong>
+                        <br>- "Charlie" arrives (Green). Bouncer checks his hand. No Green dot. <strong>Result:</strong> "You are definitely NOT on the list." (100% accurate).
+                        <br>- "Alex" arrives (Red). Bouncer checks hand. Red dot exists. <strong>Result:</strong> "You MIGHT be on the list." (Maybe it was Alice who put the Red dot there). He lets Alex pass to the main desk to double-check.
+                    </li>
+                </ul>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: False Positives</span>
+                <p>A Bloom Filter is a bit-array of size <code>M</code> (e.g., 1000 bits set to 0).</p>
+                <p><strong>Adding 'hello':</strong> Run it through 3 hash functions. Result: 12, 55, 90. Set bits 12, 55, and 90 to <strong>1</strong>.</p>
+                <p><strong>Checking 'world':</strong> Run it through same hashes. Result: 12, 40, 88. Check the bits. Bit 40 is <strong>0</strong>. Conclusion: 'world' is <strong>definitely not</strong> in the set.</p>
+                <p><strong>Checking 'hello':</strong> Bits 12, 55, 90 are all 1. Conclusion: 'hello' is <strong>probably</strong> in the set. (False Positive rate depends on array size).</p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Building a Bloom Filter</strong>
+                <p>We simulate a filter with a small size (100 bits) to intentionally force collisions.</p>
+            </div>
+
+<pre><code class="language-javascript">class BloomFilter {
+    constructor(size = 100) {
+        this.size = size;
+        this.store = new Array(size).fill(0); // The Bit Array
+    }
+
+    // 3 Simple Hash Functions
+    hash1(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) hash = (hash + str.charCodeAt(i)) % this.size;
+        return hash;
+    }
+    hash2(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) hash = (hash + str.charCodeAt(i) * 2) % this.size;
+        return hash;
+    }
+    hash3(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) hash = (hash + str.charCodeAt(i) * 3) % this.size;
+        return hash;
+    }
+
+    add(str) {
+        this.store[this.hash1(str)] = 1;
+        this.store[this.hash2(str)] = 1;
+        this.store[this.hash3(str)] = 1;
+    }
+
+    contains(str) {
+        const h1 = this.store[this.hash1(str)];
+        const h2 = this.store[this.hash2(str)];
+        const h3 = this.store[this.hash3(str)];
+        
+        // If ALL bits are 1, it MIGHT be there.
+        // If ANY bit is 0, it is DEFINITELY NOT there.
+        return (h1 && h2 && h3); 
+    }
+}
+
+// --- SIMULATION ---
+const bloom = new BloomFilter(50); // Very small size to force collisions
+
+bloom.add("apple");
+bloom.add("banana");
+bloom.add("orange");
+
+console.log("Checking 'apple':", bloom.contains("apple") ? "Maybe Yes" : "No"); // Yes
+console.log("Checking 'kiwi': ", bloom.contains("kiwi") ? "Maybe Yes" : "No");  // No
+
+// Collision Test (False Positive)
+// With size 50, eventually a random string will hash to the same slots as apple+banana
+console.log("Checking 'grape':", bloom.contains("grape") ? "Maybe Yes (Possible Collision)" : "No");</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: How do you prevent "Cache Penetration"?</strong><br>
+                <em>Ans:</em> Hackers can spam your API with non-existent IDs ("user-99999"). The Cache misses, so the DB gets hit. 1 million requests = 1 million DB hits. <br>
+                <em>Fix:</em> Put a <strong>Bloom Filter</strong> in front of the Cache. If the Filter says "No", return 404 immediately. Do not touch Redis or Postgres.</p>
+                
+                <p><strong>Q2: Can I delete an item from a Bloom Filter?</strong><br>
+                <em>Ans:</em> <strong>No.</strong> If you turn a "1" back to "0", you might accidentally delete 5 other words that shared that same bit. <br>
+                <em>Fix:</em> Use a <strong>Counting Bloom Filter</strong> (store integers instead of bits) or rebuild the filter periodically.</p>
+            </div>
+
+        </div>
+    </details>
+    <div class="pattern-group" style="margin-top: 50px;">
+        <h2>Module 4: Messaging & Async (The Glue)</h2>
+
+        <details open>
+            <summary>16. Message Queues (RabbitMQ vs Kafka) <span class="badge">Architecture</span></summary>
+            <div class="content">
+                
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Phone vs The Mailbox</span>
+                    <ul>
+                        <li><strong>HTTP (The Phone Call):</strong> Service A calls Service B. Service B must pick up <em>right now</em>. If B is busy, A waits on the line (Latency). If B crashes, A hangs up (Error).</li>
+                        <li><strong>Message Queue (The Mailbox):</strong> Service A writes a letter and drops it in the mailbox. A walks away immediately (Async). Service B wakes up later, opens the mailbox, and processes the letters one by one at its own speed.</li>
+                    </ul>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Architect: Smart Broker vs Smart Consumer</span>
+                    <p><strong>RabbitMQ (Smart Broker / Dumb Consumer):</strong>
+                    <br>- <strong>Push Model:</strong> The queue pushes messages to workers.
+                    <br>- <strong>Complex Routing:</strong> Supports Exchanges, Bindings, and Wildcards.
+                    <br>- <strong>Ephemeral:</strong> Once a message is consumed (Ack), it is deleted forever.</p>
+                    
+                    <p><strong>Kafka (Dumb Broker / Smart Consumer):</strong>
+                    <br>- <strong>Pull Model:</strong> Workers request messages when they are ready.
+                    <br>- <strong>Log Storage:</strong> Messages are written to disk and persisted for days. They are not deleted after reading. You can "Replay" history.
+                    <br>- <strong>Throughput:</strong> Massive. Designed for streaming events (Clickstreams, Logs).</p>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <strong>🔬 Code Experiment: Peak Load Smoothing</strong>
+                    <p>We simulate a burst of 10 jobs. The worker processes them slowly (1s each). The Producer finishes instantly.</p>
+                </div>
+
+<pre><code class="language-javascript">class SimpleQueue {
+    constructor() {
+        this.queue = [];
+        this.workers = [];
+    }
+
+    // PRODUCER (Fast)
+    enqueue(job) {
+        console.log(`[Producer] Enqueued Job ${job.id}`);
+        this.queue.push(job);
+        this.process();
+    }
+
+    // CONSUMER REGISTRATION
+    subscribe(workerFn) {
+        this.workers.push({ fn: workerFn, busy: false });
+        this.process();
+    }
+
+    // BROKER LOGIC
+    async process() {
+        // Find idle worker
+        const availableWorker = this.workers.find(w => !w.busy);
+        
+        if (availableWorker && this.queue.length > 0) {
+            const job = this.queue.shift();
+            availableWorker.busy = true;
+            
+            console.log(`[Broker] Sending Job ${job.id} to Worker...`);
+            
+            // Wait for worker to finish (Simulating Ack)
+            await availableWorker.fn(job);
+            
+            availableWorker.busy = false;
+            this.process(); // Check for more work
+        }
+    }
+}
+
+// --- USAGE ---
+const q = new SimpleQueue();
+
+// A Slow Worker (Takes 1s per job)
+q.subscribe(async (job) => {
+    await new Promise(r => setTimeout(r, 1000));
+    console.log(`✅ [Worker] Finished Job ${job.id}`);
+});
+
+// A Fast Producer (Bursts 5 jobs instantly)
+console.log("--- BURST START ---");
+for(let i=1; i<=5; i++) {
+    q.enqueue({ id: i, data: "Heavy Task" });
+}
+console.log("--- PRODUCER DONE (Zero Waiting) ---");
+
+// OUTPUT:
+// Producer enqueues all 5 instantly.
+// Broker feeds Worker one by one every second.
+// The Producer does not wait for the Worker.</code></pre>
+
+                <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                    <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                    
+                    <p><strong>Q1: When would you use RabbitMQ over Kafka?</strong><br>
+                    <em>Ans:</em> When you need <strong>Complex Routing</strong> or <strong>Job Queues</strong>.
+                    <br>- If you need to route "Error Logs" to Service A and "All Logs" to Service B, RabbitMQ's Topic Exchange is perfect.
+                    <br>- If you need long-term storage or replayability, Kafka is better.</p>
+                    
+                    <p><strong>Q2: What is the "Poison Pill" message?</strong><br>
+                    <em>Ans:</em> A message that causes the Consumer to crash. The Broker detects the crash and redelivers the message. The Consumer crashes again. Infinite loop. <br>
+                    <em>Fix:</em> <strong>Dead Letter Queue (DLQ).</strong> After N failed attempts, move the message to a separate "Hospital Queue" for manual inspection.</p>
+                </div>
+
+            </div>
+        </details>
+        <details>
+        <summary>17. Pub/Sub Pattern (Fan-Out Architecture) <span class="badge">Decoupling</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Megaphone</span>
+                <p>Imagine a Town Crier (Publisher).</p>
+                <ul>
+                    <li><strong>Direct Messaging (Coupled):</strong> The Crier walks to the Baker, tells the news. Walks to the Butcher, tells the news. Walks to the Smith, tells the news. (Slow, fragile).</li>
+                    <li><strong>Pub/Sub (Decoupled):</strong> The Crier stands in the square and shouts into a <strong>Megaphone</strong>. "HEAR YE! THE KING IS HERE!"
+                        <br>- The Baker is listening -> Hears it.
+                        <br>- The Butcher is listening -> Hears it.
+                        <br>- The Tourist (New Service) just walked in -> Hears it too.
+                    </li>
+                </ul>
+                <p>The Crier <strong>does not know</strong> who is listening. He just shouts.</p>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: Fan-Out Exchange</span>
+                <p>In RabbitMQ/SNS, this is called a <strong>Fan-Out</strong>.</p>
+                <ol>
+                    <li><strong>Publisher:</strong> Sends 1 message to an <strong>Exchange</strong> (Topic: `video.uploaded`).</li>
+                    <li><strong>Exchange:</strong> Clones the message and pushes it to <strong>N Queues</strong> (ThumbnailQueue, EmailQueue, AnalyticsQueue).</li>
+                    <li><strong>Consumers:</strong> Each service reads its own private queue independently.</li>
+                </ol>
+                <p><em>Benefit:</em> <strong>Zero Impact Scaling.</strong> You can add a new "Copyright Check Service" tomorrow without changing a single line of code in the "Upload Service".</p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Decoupling a Video Uploader</strong>
+                <p>We use Node's `EventEmitter` to simulate a Pub/Sub bus.</p>
+            </div>
+
+<pre><code class="language-javascript">const EventEmitter = require('events');
+const eventBus = new EventEmitter();
+
+// --- 1. THE PUBLISHER (Core Logic) ---
+function uploadVideo(filename) {
+    console.log(`\n[Core] Uploading ${filename} to S3... Done.`);
+    
+    // The Core logic DOES NOT call other services.
+    // It just shouts "I am done!"
+    eventBus.emit('video-uploaded', { id: 123, file: filename });
+}
+
+// --- 2. THE SUBSCRIBERS (Decoupled Services) ---
+
+// Service A: Thumbnail
+eventBus.on('video-uploaded', (data) => {
+    console.log(`   📷 [Thumbnail] Generating JPG for ID ${data.id}`);
+});
+
+// Service B: Notification
+eventBus.on('video-uploaded', (data) => {
+    console.log(`   📧 [Email] Sending "Ready" email for ${data.file}`);
+});
+
+// Service C: Analytics
+eventBus.on('video-uploaded', (data) => {
+    console.log(`   📊 [Analytics] Incrementing upload count for User`);
+});
+
+// --- EXECUTION ---
+uploadVideo("cat_jump.mp4");
+
+// OUTPUT:
+// [Core] Uploading cat_jump.mp4 to S3... Done.
+//    📷 [Thumbnail] Generating JPG for ID 123
+//    📧 [Email] Sending "Ready" email for cat_jump.mp4
+//    📊 [Analytics] Incrementing upload count for User</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: What happens if one subscriber fails?</strong><br>
+                <em>Ans:</em> That is the beauty of Pub/Sub. If the "Email Service" crashes, it does not affect the "Thumbnail Service". The Exchange will usually hold the message for the Email Service (retention) until it comes back online, or move it to a Dead Letter Queue.</p>
+                
+                <p><strong>Q2: Redis Pub/Sub vs RabbitMQ Fanout?</strong><br>
+                <em>Ans:</em>
+                <br>- <strong>Redis Pub/Sub:</strong> Fire and Forget. If the subscriber is offline, the message is <strong>lost forever</strong>. Good for "User Typing..." indicators.
+                <br>- <strong>RabbitMQ/Kafka:</strong> Durable. Messages persist in a queue until acknowledged. Use this for critical business logic.</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>18. Backpressure & Leaky Bucket (Traffic Shaping) <span class="badge">Resilience</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Kitchen Funnel</span>
+                <p>You have a large bucket of water (Incoming Requests) and a small bottle (Database).</p>
+                <ul>
+                    <li><strong>Without Backpressure:</strong> You dump the bucket onto the bottle. The water spills everywhere and the bottle falls over. (Database Crash).</li>
+                    <li><strong>Leaky Bucket:</strong> You pour the bucket into a <strong>Funnel</strong>. The funnel holds the water (Queue) and releases it drop-by-drop into the bottle (Constant Rate).</li>
+                    <li><strong>Overflow:</strong> If the funnel gets full to the brim, you stop pouring and throw the rest of the water away (Load Shedding / 503 Error).</li>
+                </ul>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: Traffic Smoothing</span>
+                <p><strong>Token Bucket (Q4):</strong> Allows bursts. (Good for User UX). <br>
+                <strong>Leaky Bucket (Q18):</strong> Forces a constant output rate. (Good for Database Protection).</p>
+                <p><strong>The Strategy:</strong></p>
+                <ol>
+                    <li><strong>Queue:</strong> Requests enter a FIFO queue.</li>
+                    <li><strong>Processor:</strong> A timer pulls requests from the queue at a fixed rate (e.g., 100/sec).</li>
+                    <li><strong>Drop:</strong> If the queue size > MaxSize, reject new requests immediately (503 Service Unavailable). This is <strong>Load Shedding</strong>.</li>
+                </ol>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: The Traffic Smoother</strong>
+                <p>We send 20 requests instantly. The processor only handles 1 per second. The queue size is 5. Excess requests are dropped.</p>
+            </div>
+
+<pre><code class="language-javascript">class LeakyBucket {
+    constructor(ratePerSec, queueSize) {
+        this.capacity = queueSize;
+        this.queue = [];
+        this.interval = 1000 / ratePerSec;
+        this.isProcessing = false;
+    }
+
+    add(reqId) {
+        // 1. Load Shedding (Drop if full)
+        if (this.queue.length >= this.capacity) {
+            console.log(`❌ [Dropped] Req ${reqId} (Queue Full)`);
+            return false;
+        }
+
+        // 2. Enqueue
+        this.queue.push(reqId);
+        console.log(`📥 [Queued] Req ${reqId}. Size: ${this.queue.length}`);
+        
+        // 3. Ensure processor is running
+        if (!this.isProcessing) this.process();
+        return true;
+    }
+
+    process() {
+        if (this.queue.length === 0) {
+            this.isProcessing = false;
+            return;
+        }
+
+        this.isProcessing = true;
+        const reqId = this.queue.shift();
+
+        // 4. Handle Request (Simulated DB Write)
+        console.log(`✅ [Processed] Req ${reqId} sent to DB.`);
+
+        // 5. Schedule next processing tick (Constant Rate)
+        setTimeout(() => this.process(), this.interval);
+    }
+}
+
+// --- SIMULATION ---
+const bucket = new LeakyBucket(1, 5); // 1 req/sec, Max Queue 5
+
+console.log("--- BURST OF 10 REQUESTS ---");
+for (let i = 1; i <= 10; i++) {
+    bucket.add(i);
+}
+
+// EXPECTED OUTPUT:
+// Req 1-5: Queued
+// Req 6-10: Dropped (Queue Full)
+// ... Then Req 1-5 processed one by one every second.</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: Why drop requests? Isn't it better to queue them all?</strong><br>
+                <em>Ans:</em> <strong>No.</strong> This is the "Death Spiral". If you queue 1 million requests, your server runs out of RAM and crashes. Even if it doesn't crash, the user waiting for Request #1,000,000 will wait 2 hours. They have already left. It is better to fail fast (503) so the client can retry later.</p>
+                
+                <p><strong>Q2: How is this different from Rate Limiting?</strong><br>
+                <em>Ans:</em>
+                <br>- <strong>Rate Limiting:</strong> Protects the Server from the User (e.g., "You can only click 5 times").
+                <br>- <strong>Backpressure/Leaky Bucket:</strong> Protects the Downstream Service from the Server (e.g., "The DB can only handle 5 writes/sec"). It is an internal safety valve.</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>19. Event Sourcing (The Source of Truth) <span class="badge">Architecture</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Bank Ledger</span>
+                <p>Imagine two ways to track your money.</p>
+                <ul>
+                    <li><strong>CRUD Way (The Eraser):</strong> You have a whiteboard that says "$100". You spend $20. You erase "$100" and write "$80". <br><em>Problem:</em> If the whiteboard gets smudged, you have no idea what happened. Did you spend $20? Or did you receive $80? The history is destroyed.</li>
+                    <li><strong>Event Sourcing (The Accountant):</strong> You have a permanent notebook. You write "Start: $0", "Deposit: $100", "Spend: $20". <br><em>Benefit:</em> You never erase. To know your balance, you just add up the list. If you make a mistake ("Spend $5000"), you don't erase it; you add a correction line ("Refund $5000").</li>
+                </ul>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: Replaying & Snapshots</span>
+                <p>In Event Sourcing, the <strong>Database of Events</strong> is the Source of Truth.</p>
+                <ul>
+                    <li><strong>Append Only:</strong> Updates are forbidden. Deletes are forbidden. You only INSERT events (`MoneyDeposited`, `MoneyWithdrawn`).</li>
+                    <li><strong>Projections (Replay):</strong> To get the "User Profile", you fetch all events for `UserID` and reduce them: `events.reduce((state, event) => apply(state, event), initialState)`.</li>
+                    <li><strong>Snapshots:</strong> Replaying 1 million events is slow. Every 1,000 events, you save a "Snapshot" of the state. Next time, you load the Snapshot + only the new events.</li>
+                </ul>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Building a Bank with Events</strong>
+                <p>We simulate a bank account that rebuilds its state from history.</p>
+            </div>
+
+<pre><code class="language-javascript">class EventStore {
+    constructor() {
+        this.events = [];
+    }
+
+    add(aggregateId, type, payload) {
+        const event = { 
+            id: this.events.length + 1,
+            aggregateId,
+            type, 
+            payload, 
+            timestamp: Date.now() 
+        };
+        this.events.push(event);
+        console.log(`[Log] Recorded: ${type}`, payload);
+    }
+
+    getEvents(aggregateId) {
+        return this.events.filter(e => e.aggregateId === aggregateId);
+    }
+}
+
+// THE AGGREGATE (The Logic)
+class BankAccount {
+    constructor(id, store) {
+        this.id = id;
+        this.store = store;
+        this.balance = 0; // Temporary State
+    }
+
+    // 1. REHYDRATE (Rebuild State from History)
+    loadFromHistory() {
+        const history = this.store.getEvents(this.id);
+        this.balance = 0; // Reset
+        
+        history.forEach(event => {
+            switch(event.type) {
+                case 'DEPOSIT': this.balance += event.payload.amount; break;
+                case 'WITHDRAW': this.balance -= event.payload.amount; break;
+            }
+        });
+        console.log(`[State] Account ${this.id} Rebuilt. Balance: $${this.balance}`);
+    }
+
+    deposit(amount) {
+        this.store.add(this.id, 'DEPOSIT', { amount });
+    }
+
+    withdraw(amount) {
+        // We must load state to check rules
+        this.loadFromHistory(); 
+        
+        if (this.balance >= amount) {
+            this.store.add(this.id, 'WITHDRAW', { amount });
+        } else {
+            console.log("❌ Insufficient Funds!");
+        }
+    }
+}
+
+// --- SIMULATION ---
+const db = new EventStore();
+const myAccount = new BankAccount('user-1', db);
+
+myAccount.deposit(100);
+myAccount.withdraw(30);
+myAccount.deposit(50);
+
+// Suppose Server Crashes here. RAM is gone.
+// We restart and create a NEW object.
+console.log("\n--- SYSTEM RESTART ---");
+const restoredAccount = new BankAccount('user-1', db);
+
+// It automatically recalculates 100 - 30 + 50 = 120
+restoredAccount.loadFromHistory(); 
+
+// EXPECTED OUTPUT:
+// [State] Account user-1 Rebuilt. Balance: $120</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: What is CQRS and how does it relate to Event Sourcing?</strong><br>
+                <em>Ans:</em> Command Query Responsibility Segregation.
+                <br>Since replaying events is slow for <em>Reads</em>, we separate the system:
+                <br>- <strong>Write Side (Command):</strong> Appends to Event Store.
+                <br>- <strong>Read Side (Query):</strong> A separate process listens to events and updates a SQL/NoSQL table ("The Projection") purely for fast reading. Example: User table shows `balance: 120` instantly.</p>
+                
+                <p><strong>Q2: How do you handle "Forgot Password" (GDPR Data Deletion) if the log is immutable?</strong><br>
+                <em>Ans:</em> This is the "Crypto-Shredding" pattern. You don't store personal data (PII) in the immutable log directly. You store PII in a separate Key-Value store, and put the <em>Key</em> in the log. To delete the user, you delete the Key from the KV store. The log remains valid but the data becomes unreadable.</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>20. MapReduce (Distributed Data Processing) <span class="badge">Big Data</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Census</span>
+                <p>You want to count the population of the USA (330 Million).</p>
+                <ul>
+                    <li><strong>The Bad Way:</strong> One person walks to every house in the country. It takes 100 years.</li>
+                    <li><strong>The MapReduce Way:</strong>
+                        <br>1. <strong>Split:</strong> You cut the map into 50 states.
+                        <br>2. <strong>Map:</strong> You send 50 counters (Workers). Each counter goes to one state and counts just that state. "California: 39M".
+                        <br>3. <strong>Reduce:</strong> All 50 counters meet in DC. You simply add their 50 numbers together. "Total: 330M".
+                    </li>
+                </ul>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: Map -> Shuffle -> Reduce</span>
+                <p>The pattern consists of three phases:</p>
+                <ol>
+                    <li><strong>Map (Parallel):</strong> Input is split into chunks. Workers process chunks <em>independently</em>. Output: `Key: Value` pairs (e.g., `word: 1`).</li>
+                    <li><strong>Shuffle (Sort):</strong> The system groups all data <strong>by Key</strong>. All `Key: A` go to Reducer 1. All `Key: B` go to Reducer 2.</li>
+                    <li><strong>Reduce (Aggregate):</strong> The Reducer sums up the values for its specific key.</li>
+                </ol>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Distributed Word Count</strong>
+                <p>We simulate processing a text file by splitting it across 3 Worker Threads (Mappers) and aggregating the result (Reducer).</p>
+            </div>
+
+<pre><code class="language-javascript">const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
+
+// INPUT DATA (Imagine this is 1TB of logs)
+const BIG_DATA = [
+    "error at line 1", "info at line 2", "error at line 3", 
+    "warn at line 4", "error at line 5", "info at line 6",
+    "error at line 7", "error at line 8", "warn at line 9"
+];
+
+if (isMainThread) {
+    // --- COORDINATOR (REDUCER) ---
+    const CHUNKS = 3;
+    const chunkSize = Math.ceil(BIG_DATA.length / CHUNKS);
+    let completed = 0;
+    const finalCounts = {};
+
+    console.log(`Starting ${CHUNKS} Mappers...`);
+
+    for (let i = 0; i < CHUNKS; i++) {
+        const chunk = BIG_DATA.slice(i * chunkSize, (i + 1) * chunkSize);
+        
+        // Spawn Mapper
+        const worker = new Worker(__filename, { workerData: chunk });
+        
+        worker.on('message', (partialCounts) => {
+            // REDUCE STEP (Aggregate results)
+            for (const [key, count] of Object.entries(partialCounts)) {
+                finalCounts[key] = (finalCounts[key] || 0) + count;
+            }
+            
+            completed++;
+            if (completed === CHUNKS) {
+                console.log("\n✅ Job Complete. Final Counts:");
+                console.table(finalCounts);
+            }
+        });
+    }
+
+} else {
+    // --- WORKER (MAPPER) ---
+    const lines = workerData;
+    const counts = {};
+
+    // Map Logic: Count occurrences in this specific chunk
+    lines.forEach(line => {
+        const type = line.split(" ")[0]; // Get "error", "info", etc
+        counts[type] = (counts[type] || 0) + 1;
+    });
+
+    // Send back to Coordinator
+    parentPort.postMessage(counts);
+}
+
+// OUTPUT:
+// ┌────────┬────────┐
+// │ (index)│ Values │
+// ├────────┼────────┤
+// │ error  │   5    │
+// │ info   │   2    │
+// │ warn   │   2    │
+// └────────┴────────┘</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: What happens if a Mapper fails?</strong><br>
+                <em>Ans:</em> The Coordinator detects the failure (heartbeat miss) and re-assigns <strong>that specific chunk</strong> to a different worker. You do not need to restart the whole job. This is why MapReduce is fault-tolerant.</p>
+                
+                <p><strong>Q2: Why is the "Shuffle" phase the bottleneck?</strong><br>
+                <em>Ans:</em> Because it involves moving massive amounts of data across the network. If Mapper A finds 1 million "Cat" keys, it has to send them all to the "Cat Reducer" server. This floods the network bandwidth.</p>
+            </div>
+
+        </div>
+    </details>
+    <div class="pattern-group" style="margin-top: 50px;">
+        <h2>Module 5: Real-World Architectures (21-25)</h2>
+
+        <details open>
+            <summary>21. Design URL Shortener (TinyURL) <span class="badge">System Design</span></summary>
+            <div class="content">
+                
+                <div class="eli5-box">
+                    <span class="eli5-title">👶 ELI5: The Valet Parking Ticket</span>
+                    <p>You drive a huge limousine (Long URL) to a restaurant.</p>
+                    <ul>
+                        <li><strong>The Problem:</strong> The limousine doesn't fit in your pocket. You can't carry it around.</li>
+                        <li><strong>The Solution:</strong> The Valet takes your car and parks it in Spot #12345. He gives you a tiny ticket that says "12345".</li>
+                        <li><strong>The Retrieval:</strong> When you want your car back, you give the ticket "12345" to the Valet. He looks up Spot #12345 and brings your specific car.</li>
+                    </ul>
+                </div>
+
+                <div class="tech-box">
+                    <span class="tech-title">🧠 Senior Architect: Base62 Encoding</span>
+                    <p>How do we generate a short, unique string like <code>bit.ly/aZb9</code>?</p>
+                    <ul>
+                        <li><strong>Hashing (MD5/SHA):</strong> Bad idea. Hashing produces long strings (32 chars). If you truncate it, you get collisions.</li>
+                        <li><strong>Base62 Encoding (The Standard):</strong> Use an Auto-Incrementing Database ID. Convert that Number (Base 10) to Base 62 (a-z, A-Z, 0-9).
+                            <br>- ID 1 -> "1"
+                            <br>- ID 10,000,000 -> "FXsk" (Only 4 chars!)
+                        </li>
+                    </ul>
+                    <p><strong>Capacity:</strong> With 6 characters, you have $62^6$ combinations = ~56 Billion URLs. Enough for years.</p>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <strong>🔬 Code Experiment: The Base62 Algorithm</strong>
+                    <p>We will write the core logic that converts a Database ID into a Short Code and back.</p>
+                </div>
+
+<pre><code class="language-javascript">const CHARSET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+class UrlShortener {
+    constructor() {
+        this.db = new Map(); // Simulating SQL Table: { id: LongURL }
+        this.currentId = 1000000000; // Start at a high number for 6-char codes
+    }
+
+    // 1. ENCODE (ID -> ShortCode)
+    encode(num) {
+        let str = '';
+        while (num > 0) {
+            str = CHARSET[num % 62] + str;
+            num = Math.floor(num / 62);
+        }
+        return str;
+    }
+
+    // 2. DECODE (ShortCode -> ID) -> Not strictly needed if we store Code->URL mapping
+    decode(str) {
+        let num = 0;
+        for (let i = 0; i < str.length; i++) {
+            const charIndex = CHARSET.indexOf(str[i]);
+            num = num * 62 + charIndex;
+        }
+        return num;
+    }
+
+    shorten(longUrl) {
+        const id = this.currentId++; // Simulate DB Auto-Increment
+        const shortCode = this.encode(id);
+        
+        // Store in DB
+        this.db.set(shortCode, longUrl);
+        
+        return `https://tiny.url/${shortCode}`;
+    }
+
+    visit(shortCode) {
+        if (this.db.has(shortCode)) {
+            return this.db.get(shortCode); // Redirect 301
+        }
+        return "404 Not Found";
+    }
+}
+
+// --- SIMULATION ---
+const app = new UrlShortener();
+
+const myLinks = [
+    "https://google.com/search?q=system+design",
+    "https://youtube.com/watch?v=dQw4w9WgXcQ",
+    "https://mysite.com/very/long/url/path"
+];
+
+myLinks.forEach(url => {
+    const short = app.shorten(url);
+    console.log(`Shortened: ${short} -> ${url}`);
+});
+
+// Test Retrieval (Simulate user clicking link)
+// We take the code from the last output (e.g., "15FTGg")
+// console.log("Visiting:", app.visit("15FTGg"));</code></pre>
+
+                <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                    <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                    
+                    <p><strong>Q1: How do you handle ID generation across multiple servers?</strong><br>
+                    <em>Ans:</em> If you have 10 App Servers generating IDs, you will have collisions (Two servers generate ID 100). <br>
+                    <em>Fix 1 (ZooKeeper):</em> Assign ranges. Server A gets 1-1M, Server B gets 1M-2M. <br>
+                    <em>Fix 2 (Ticket Server):</em> A centralized database (Flickr Ticket Server) whose ONLY job is to return `REPLACE INTO Tickets64 (stub) VALUES ('a'); SELECT LAST_INSERT_ID();`.</p>
+                    
+                    <p><strong>Q2: Should we use HTTP 301 or 302 for the redirect?</strong><br>
+                    <em>Ans:</em> 
+                    <br>- <strong>301 (Permanent):</strong> Browser caches the redirect. Fastest for user, but you lose analytics (You don't know they clicked it again).
+                    <br>- <strong>302 (Temporary):</strong> Browser hits your server every time. Slower, but perfect analytics.</p>
+                </div>
+
+            </div>
+        </details>
+        <details>
+        <summary>22. Design WhatsApp (Store-and-Forward Architecture) <span class="badge">System Design</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Post Office Box</span>
+                <p><strong>Real-Time Myth:</strong> You think WhatsApp sends messages directly from Phone A to Phone B. It doesn't. That would fail if Phone B has no signal.</p>
+                <p><strong>The Reality (Store-and-Forward):</strong></p>
+                <ol>
+                    <li><strong>A sends to Server:</strong> "Here is a letter for B." (Server sends 'Sent' Tick to A).</li>
+                    <li><strong>Server checks B:</strong> "Is B online?"</li>
+                    <li><strong>If B is Offline:</strong> Server puts the letter in B's <strong>Mailbox (Database)</strong>. It sits there for hours.</li>
+                    <li><strong>B comes Online:</strong> Server sees B connect. It opens the Mailbox and pushes all old letters to B. (Server sends 'Delivered' Tick to A).</li>
+                    <li><strong>B reads it:</strong> B sends a "Read Receipt" back to Server -> Server forwards to A. (Blue Ticks).</li>
+                </ol>
+            </div>
+
+            <div style="text-align: center; margin: 20px 0;">
+                
+
+[Image of real time chat application architecture]
+
+                <p style="font-size: 0.8rem; color: #94a3b8;">The Gateway handles connections. The DB stores offline messages.</p>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: The Decision Matrix</span>
+                
+                <p><strong>1. Protocol: WebSockets vs MQTT</strong><br>
+                While WebSockets are fine for web, WhatsApp uses <strong>XMPP</strong> (Extensible Messaging and Presence Protocol) or <strong>MQTT</strong> on mobile because they are battery-efficient and handle "keep-alive" ping/pong better on flaky 4G networks.</p>
+
+                <p><strong>2. Database: Why NOT MySQL?</strong><br>
+                WhatsApp handles ~100 Billion messages/day. That is a <strong>Write-Heavy</strong> workload.<br>
+                - <strong>SQL (B-Tree):</strong> Too slow for inserting 100B rows/day.<br>
+                - <strong>Cassandra/HBase (LSM Tree):</strong> Optimized for appending logs. Perfect for chat history. (See Q10).</p>
+
+                <p><strong>3. Message Ordering:</strong><br>
+                If you send "Hello" then "How are you", they must arrive in that order. We cannot rely on server timestamps (clock skew). We use a <strong>Client-Side Monotonic Sequence ID</strong> per chat conversation.</p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: The "Store-and-Forward" Core</strong>
+                <p>We will simulate the Server Logic handling: Online Delivery, Offline Storage, and Acks.</p>
+            </div>
+
+<pre><code class="language-javascript">class ChatSystem {
+    constructor() {
+        // 1. Active Connections (Ram)
+        // Map<UserID, SocketConnection>
+        this.connections = new Map(); 
+        
+        // 2. Offline Storage (Simulated Cassandra)
+        // Map<UserID, Array<Message>>
+        this.offlineStorage = new Map(); 
+    }
+
+    // User Connects (e.g., opens app)
+    userConnects(userId, socket) {
+        console.log(`🟢 [${userId}] Online`);
+        this.connections.set(userId, socket);
+
+        // FLUSH OFFLINE MESSAGES
+        if (this.offlineStorage.has(userId)) {
+            const pending = this.offlineStorage.get(userId);
+            if (pending.length > 0) {
+                console.log(`   📦 Pushing ${pending.length} offline messages to ${userId}`);
+                pending.forEach(msg => socket.receive(msg));
+                this.offlineStorage.delete(userId); // Clear DB after delivery
+            }
+        }
+    }
+
+    userDisconnects(userId) {
+        console.log(`🔴 [${userId}] Offline`);
+        this.connections.delete(userId);
+    }
+
+    // CORE LOGIC: HANDLING A NEW MESSAGE
+    sendMessage(fromId, toId, content) {
+        const message = {
+            id: Math.random().toString(36).substr(2, 9),
+            from: fromId,
+            content: content,
+            timestamp: Date.now()
+        };
+
+        console.log(`\n📨 Msg from ${fromId} to ${toId}: "${content}"`);
+
+        // Step 1: Send 'Sent' Ack to Sender (One Tick)
+        this.sendAck(fromId, message.id, 'SENT_SERVER');
+
+        // Step 2: Check Receiver Status
+        if (this.connections.has(toId)) {
+            // A. Receiver is ONLINE -> Push directly
+            const socket = this.connections.get(toId);
+            socket.receive(message);
+            console.log(`   🚀 Delivered instantly to ${toId}`);
+            
+            // Send 'Delivered' Ack to Sender (Two Ticks)
+            this.sendAck(fromId, message.id, 'DELIVERED_DEVICE');
+        
+        } else {
+            // B. Receiver is OFFLINE -> Store in DB
+            if (!this.offlineStorage.has(toId)) {
+                this.offlineStorage.set(toId, []);
+            }
+            this.offlineStorage.get(toId).push(message);
+            console.log(`   💾 Receiver offline. Saved to Cassandra.`);
+        }
+    }
+
+    sendAck(userId, msgId, status) {
+        if (this.connections.has(userId)) {
+            const socket = this.connections.get(userId);
+            socket.receiveAck(msgId, status);
+        }
+    }
+}
+
+// --- SIMULATION ---
+
+// Mock Socket Client
+class UserDevice {
+    constructor(id, server) { 
+        this.id = id; 
+        this.server = server; 
+    }
+    connect() { this.server.userConnects(this.id, this); }
+    disconnect() { this.server.userDisconnects(this.id); }
+    send(to, text) { this.server.sendMessage(this.id, to, text); }
+    
+    // Callback when receiving message
+    receive(msg) { 
+        console.log(`   📱 [${this.id}] Displaying: "${msg.content}"`); 
+    }
+    // Callback when receiving tick
+    receiveAck(msgId, status) {
+        const ticks = status === 'SENT_SERVER' ? '✓' : '✓✓';
+        console.log(`   ✅ [${this.id}] UI Update for msg ${msgId}: ${ticks} (${status})`);
+    }
+}
+
+// RUN
+const whatsapp = new ChatSystem();
+const alice = new UserDevice('Alice', whatsapp);
+const bob = new UserDevice('Bob', whatsapp);
+
+// Scenario 1: Both Online
+alice.connect();
+bob.connect();
+alice.send('Bob', 'Hello Bob!');
+
+// Scenario 2: Bob goes Offline
+bob.disconnect();
+alice.send('Bob', 'Are you there?'); 
+// (Saved to DB, Alice gets 1 tick)
+
+// Scenario 3: Bob comes back
+bob.connect(); 
+// (Flushes 'Are you there?' from DB, Alice gets 2 ticks)</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: How do you implement "Last Seen"?</strong><br>
+                <em>Ans:</em> Do NOT update the database on every heartbeat (too many writes).
+                <br>Use <strong>Redis</strong>. When a user sends a heartbeat, update a Key `last_seen:userid` with TTL.
+                <br>When User A opens User B's chat, fetch `last_seen:B` from Redis. Only flush Redis to the persistent DB (Cassandra) once every 5 minutes to save writes.</p>
+                
+                <p><strong>Q2: How do you handle Group Chat (Fan-Out)?</strong><br>
+                <em>Ans:</em>
+                <br><strong>Small Groups (Limit 256):</strong> Server iterates the member list and sends N messages individually. (Simple).
+                <br><strong>Huge Channels (Telegram/Discord):</strong> Do NOT iterate. Use a <strong>Pub/Sub</strong> system (Kafka). The Server publishes 1 message to `channel_ID`. All online users in that channel are subscribed to that topic and receive it.</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>23. Distributed Rate Limiter (Redis Sliding Window) <span class="badge">System Design</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Turnstile</span>
+                <p>Imagine a subway station with 10 entrances (Servers). We want to limit User A to 5 entries per minute.</p>
+                <ul>
+                    <li><strong>The Bad Way:</strong> Each guard has their own notebook. User A enters Gate 1 five times. Then walks to Gate 2. Gate 2's notebook is empty, so he lets User A in another 5 times. (Limit broken).</li>
+                    <li><strong>The Good Way (Redis):</strong> There is a single giant whiteboard in the middle of the station. Every guard <strong>must</strong> look at the whiteboard before opening the gate. If the whiteboard says "User A: 5", all 10 gates block him.</li>
+                </ul>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: Sliding Window Log vs Fixed Window</span>
+                <p><strong>Fixed Window (Simple):</strong> Key `user:123:10:00`. Count++. Expire in 1 minute. <br>
+                <em>Flaw:</em> Burst at 10:00:59 and 10:01:01 allows 2x limit.</p>
+                <p><strong>Sliding Window Log (Accurate):</strong> Store timestamps in a Redis Sorted Set (ZSET). <br>
+                1. Remove timestamps older than 1 minute. <br>
+                2. Add current timestamp. <br>
+                3. Count set size. If > Limit, reject.</p>
+                <p><strong>The Race Condition:</strong> If two requests come in at the exact same millisecond, both might read "Count: 4" and proceed. <br>
+                <em>Fix:</em> Use a <strong>Lua Script</strong> to make the "Read-Check-Write" operation atomic in Redis.</p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: The Lua Script</strong>
+                <p>We simulate a high-concurrency burst using a Mock Redis with atomic execution.</p>
+            </div>
+
+<pre><code class="language-javascript">class RedisMock {
+    constructor() { this.store = new Map(); }
+
+    // SIMULATING ATOMIC LUA SCRIPT
+    // This function runs as a single isolated transaction
+    evalSlidingWindow(key, now, windowSize, limit) {
+        if (!this.store.has(key)) this.store.set(key, []);
+        let timestamps = this.store.get(key);
+
+        // 1. Remove old timestamps (ZREMRANGEBYSCORE)
+        const cutoff = now - windowSize;
+        timestamps = timestamps.filter(ts => ts > cutoff);
+
+        // 2. Check Limit
+        if (timestamps.length >= limit) {
+            return 0; // Rejected
+        }
+
+        // 3. Add new timestamp (ZADD)
+        timestamps.push(now);
+        this.store.set(key, timestamps);
+        return 1; // Allowed
+    }
+}
+
+const redis = new RedisMock();
+
+function rateLimitMiddleware(userId) {
+    const now = Date.now();
+    const WINDOW = 1000; // 1 Second
+    const LIMIT = 3;     // 3 Requests per second
+
+    // Atomic Call
+    const allowed = redis.evalSlidingWindow(userId, now, WINDOW, LIMIT);
+
+    if (allowed) console.log(`✅ [${userId}] Request Allowed`);
+    else console.log(`⛔ [${userId}] 429 Too Many Requests`);
+}
+
+// --- SIMULATION ---
+// Burst of 5 requests instantly
+console.log("--- BURST START ---");
+for(let i=0; i<5; i++) rateLimitMiddleware("user_123");
+
+// Wait 1.1 seconds and try again
+setTimeout(() => {
+    console.log("\n--- AFTER 1.1 SECONDS ---");
+    rateLimitMiddleware("user_123"); // Should be allowed now
+}, 1100);
+
+// EXPECTED OUTPUT:
+// Req 1-3: Allowed
+// Req 4-5: Blocked
+// After 1s: Allowed</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: Sliding Window Log uses too much memory. How to fix?</strong><br>
+                <em>Ans:</em> Storing a timestamp for every request is expensive if the limit is 10,000 req/sec. <br>
+                <em>Fix:</em> Use <strong>Sliding Window Counter</strong>. Instead of individual timestamps, keep a counter for the "Current Minute" and "Previous Minute". <br>
+                Formula: <code>Count = CurrCounter + (PrevCounter * (1 - PctIntoMinute))</code>. This approximates the sliding window with O(1) memory.</p>
+                
+                <p><strong>Q2: What if Redis goes down?</strong><br>
+                <em>Ans:</em>
+                <br>1. <strong>Fail Open:</strong> Allow all traffic. (Good for user experience, bad for backend).
+                <br>2. <strong>Fail Closed:</strong> Block all traffic. (Safe for backend, terrible for users).
+                <br>3. <strong>Local Fallback:</strong> Switch to an in-memory Token Bucket on each server until Redis recovers.</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>24. Unique ID Generation (Twitter Snowflake) <span class="badge">System Design</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Custom License Plate</span>
+                <p>You need to give a unique ID to every car in the world.</p>
+                <ul>
+                    <li><strong>Random (UUID):</strong> "X7K-9P2". (Hard to sort. When was this car made? Who knows?).</li>
+                    <li><strong>Sequential (Auto-Increment):</strong> "Car #1", "Car #2". (Requires a central counter. Slow).</li>
+                    <li><strong>Snowflake (Structured):</strong> You create a rule:
+                        <br><code>[YEAR]-[FACTORY_ID]-[COUNTER]</code>
+                        <br>Example: <code>2023-05-001</code>.
+                        <br>- It is unique (Factory 05 won't clash with Factory 06).
+                        <br>- It is sortable (2023 comes after 2022).
+                        <br>- It is decentralized (Factory 05 doesn't need to talk to Factory 06).
+                    </li>
+                </ul>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: Bit Manipulation</span>
+                <p>A Snowflake ID is a 64-bit integer composed of:</p>
+                <ol>
+                    <li><strong>Sign Bit (1 bit):</strong> Always 0 (positive number).</li>
+                    <li><strong>Timestamp (41 bits):</strong> Milliseconds since a custom epoch (e.g., Twitter Epoch). Gives 69 years of IDs.</li>
+                    <li><strong>Machine ID (10 bits):</strong> Unique ID for the server generating the ID (Allows 1024 servers).</li>
+                    <li><strong>Sequence (12 bits):</strong> A local counter that resets every millisecond. Allows generating 4096 IDs <em>per millisecond per server</em>.</li>
+                </ol>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: Building a Snowflake Generator</strong>
+                <p>We will use BigInt to handle 64-bit math in Node.js.</p>
+            </div>
+
+<pre><code class="language-javascript">class Snowflake {
+    constructor(machineId) {
+        // CONFIGURATION
+        this.machineId = BigInt(machineId);
+        this.epoch = BigInt(1609459200000); // Custom Epoch (Jan 1, 2021)
+        this.sequence = BigInt(0);
+        this.lastTimestamp = BigInt(-1);
+
+        // BIT SHIFTS
+        this.timestampShift = BigInt(22);
+        this.machineIdShift = BigInt(12);
+        this.sequenceMask = BigInt(4095); // 12 bits -> 4095
+    }
+
+    nextId() {
+        let timestamp = BigInt(Date.now());
+
+        // Clock moved backwards (NTP drift) - Dangerous!
+        if (timestamp < this.lastTimestamp) {
+            throw new Error("Clock moved backwards!");
+        }
+
+        // If same millisecond, increment sequence
+        if (timestamp === this.lastTimestamp) {
+            this.sequence = (this.sequence + 1n) & this.sequenceMask;
+            // If sequence overflow (4096), wait for next millisecond
+            if (this.sequence === 0n) {
+                while (timestamp <= this.lastTimestamp) {
+                    timestamp = BigInt(Date.now());
+                }
+            }
+        } else {
+            // New millisecond, reset sequence
+            this.sequence = 0n;
+        }
+
+        this.lastTimestamp = timestamp;
+
+        // PACK BITS: (Time << 22) | (Machine << 12) | Sequence
+        const id = ((timestamp - this.epoch) << this.timestampShift) |
+                   (this.machineId << this.machineIdShift) |
+                   this.sequence;
+
+        return id.toString();
+    }
+}
+
+// --- SIMULATION ---
+// Imagine we are on Server #5
+const generator = new Snowflake(5);
+
+console.log("Generating 5 IDs (Very Fast)...");
+for(let i=0; i<5; i++) {
+    console.log(generator.nextId());
+}
+
+// DELAY TEST (Wait 1ms)
+setTimeout(() => {
+    console.log("After 1ms delay...");
+    console.log(generator.nextId()); // Should be larger
+}, 1);
+
+// OUTPUT ANALYSIS:
+// IDs are roughly increasing.
+// If you sort them as strings/numbers, they are chronological.</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: Why not just use UUID v4?</strong><br>
+                <em>Ans:</em> UUIDs are 128-bit and completely random.
+                <br>1. <strong>Size:</strong> They take 2x more storage than BigInt(64).
+                <br>2. <strong>Indexing:</strong> Random IDs cause <strong>B-Tree Fragmentation</strong> in MySQL/Postgres. Inserting a random ID forces the DB to rebalance the tree constantly. Sortable IDs (Snowflake) append to the end, which is O(1) fast.</p>
+                
+                <p><strong>Q2: What happens if the clock moves backwards (NTP Drift)?</strong><br>
+                <em>Ans:</em> This causes ID collisions (generating the same ID twice). <br>
+                <em>Fix:</em> The code throws an error and refuses to generate IDs until the clock catches up to the `lastTimestamp`. In distributed systems, use NTP servers to keep clocks synchronized, but always code defensively against drift.</p>
+            </div>
+
+        </div>
+    </details>
+    <details>
+        <summary>25. Design Typeahead (Google Search) <span class="badge">System Design</span></summary>
+        <div class="content">
+            
+            <div class="eli5-box">
+                <span class="eli5-title">👶 ELI5: The Psychic Librarian</span>
+                <p>You walk into a library and say "Harry...". The Librarian instantly hands you "Harry Potter".</p>
+                <ul>
+                    <li><strong>The Bad Way:</strong> She runs through every shelf, looks at every book title, filters for "Harry", sorts them by popularity, and gives you the top one. (Takes 1 hour).</li>
+                    <li><strong>The Good Way (The Cheat Sheet):</strong> She has a notebook at her desk. Under the page "H", she wrote "Hotmail, Hello". Under "Ha", she wrote "Harry Potter, Hawaii". Under "Har", she wrote "Harry Potter, Harvard".</li>
+                    <li><strong>The Trick:</strong> She doesn't search. She just looks up your prefix in her notebook and reads the list she wrote yesterday.</li>
+                </ul>
+            </div>
+
+            <div class="tech-box">
+                <span class="tech-title">🧠 Senior Architect: Trie + Top-K Cache</span>
+                <p>We use a **Trie (Prefix Tree)**. Each node represents a character.</p>
+                <p><strong>The Optimization:</strong> A raw Trie traversal is too slow (O(L) + O(Child_Count)). We need O(1).</p>
+                <p><strong>Solution:</strong> Store the **Top 5 Suggestions** directly inside every node. <br>
+                - Root: [Top 5 global searches] <br>
+                - Node 'A': [Amazon, Apple, Airbnb, ...] <br>
+                - Node 'Ap': [Apple, April, ...] <br>
+                When the user types "Ap", we don't traverse down to "Apple". We just return the pre-calculated list stored at Node 'Ap'.</p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <strong>🔬 Code Experiment: The "Smart" Trie</strong>
+                <p>We build a Trie that updates its "Top Suggestions" list every time a word is inserted.</p>
+            </div>
+
+<pre><code class="language-javascript">class TrieNode {
+    constructor() {
+        this.children = new Map();
+        this.top5 = []; // The Cache at every node
+    }
+}
+
+class AutocompleteSystem {
+    constructor() {
+        this.root = new TrieNode();
+        // Database of { word: frequency }
+        this.freqMap = new Map();
+    }
+
+    insert(word, score) {
+        this.freqMap.set(word, score);
+        let curr = this.root;
+
+        // Helper to update Top 5 for a specific node
+        const updateNodeTop5 = (node, word, score) => {
+            node.top5.push({ word, score });
+            // Sort descending by score
+            node.top5.sort((a, b) => b.score - a.score);
+            // Keep only top 5
+            if (node.top5.length > 5) node.top5.pop();
+        };
+
+        // Traverse and update every node on the path
+        for (const char of word) {
+            if (!curr.children.has(char)) {
+                curr.children.set(char, new TrieNode());
+            }
+            curr = curr.children.get(char);
+            updateNodeTop5(curr, word, score);
+        }
+    }
+
+    search(prefix) {
+        let curr = this.root;
+        for (const char of prefix) {
+            if (!curr.children.has(char)) return [];
+            curr = curr.children.get(char);
+        }
+        // O(1) Return because we pre-calculated it!
+        return curr.top5.map(item => item.word);
+    }
+}
+
+// --- SIMULATION ---
+const google = new AutocompleteSystem();
+
+console.log("Indexing keywords...");
+google.insert("system design", 100);
+google.insert("system of a down", 90);
+google.insert("system shock", 50);
+google.insert("sysadmin", 20);
+google.insert("syntax", 10);
+
+console.log("Typing 's':", google.search("s"));
+// Expect: system design, system of a down...
+
+console.log("Typing 'sys':", google.search("sys"));
+// Expect: system design, system of a down, system shock...
+
+console.log("Typing 'syso':", google.search("syso"));
+// Expect: system of a down</code></pre>
+
+            <div class="tech-box" style="background-color: rgba(244, 63, 94, 0.1); border-left: 4px solid #f43f5e;">
+                <span class="tech-title" style="color: #f43f5e;">🔥 The Interview "Trap" Questions</span>
+                
+                <p><strong>Q1: How do you update the Top 5 lists? Real-time?</strong><br>
+                <em>Ans:</em> <strong>No.</strong> Updating the Trie in real-time for every Google search would lock the structure. <br>
+                <em>Fix:</em> <strong>Offline MapReduce.</strong> Log all searches to Hadoop/Kafka. Once a week (or hour), run a MapReduce job to calculate frequencies and rebuild the Trie from scratch. Then swap the old Trie with the new one atomically.</p>
+                
+                <p><strong>Q2: What if the Trie is too big for RAM?</strong><br>
+                <em>Ans:</em> Use <strong>Sharding</strong> based on prefixes.
+                <br>- Server A: Holds 'a' to 'm'.
+                <br>- Server B: Holds 'n' to 'z'.
+                <br>Alternatively, keep only the top 2 levels (e.g., "aa", "ab") in RAM, and store the rest on an SSD Key-Value store (RocksDB) for fast lookup.</p>
+            </div>
+
+        </div>
+    </details>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+</body>
+</html>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+</body>
+</html>

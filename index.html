@@ -10,9 +10,13 @@
             --card-bg: #1e293b;
             --text-primary: #f1f5f9;
             --text-secondary: #94a3b8;
-            --accent-blue: #38bdf8;
-            --accent-gold: #fbbf24;
-            --accent-green: #4ade80;
+            
+            /* Theme Colors */
+            --accent-blue: #38bdf8;   /* DSA */
+            --accent-gold: #fbbf24;   /* JS */
+            --accent-green: #4ade80;  /* Node */
+            --accent-rose: #f43f5e;   /* System Design */
+            
             --card-border: #334155;
         }
         body {
@@ -24,7 +28,7 @@
             min-height: 100vh;
         }
         .container {
-            max-width: 1100px;
+            max-width: 1200px;
             margin: 0 auto;
         }
         
@@ -52,7 +56,7 @@
         /* Grid */
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 30px;
         }
 
@@ -108,17 +112,25 @@
         }
         
         /* Specific Card Themes */
+        /* DSA */
         .card-dsa:hover { border-color: var(--accent-blue); }
         .card-dsa h2 { color: var(--accent-blue); }
         .status-dsa { background: rgba(56, 189, 248, 0.15); color: var(--accent-blue); }
 
+        /* JS */
         .card-js:hover { border-color: var(--accent-gold); }
         .card-js h2 { color: var(--accent-gold); }
         .status-js { background: rgba(251, 191, 36, 0.15); color: var(--accent-gold); }
 
+        /* Node */
         .card-node:hover { border-color: var(--accent-green); }
         .card-node h2 { color: var(--accent-green); }
         .status-node { background: rgba(74, 222, 128, 0.15); color: var(--accent-green); }
+
+        /* System Design */
+        .card-design:hover { border-color: var(--accent-rose); }
+        .card-design h2 { color: var(--accent-rose); }
+        .status-design { background: rgba(244, 63, 94, 0.15); color: var(--accent-rose); }
 
         /* Footer */
         footer {
@@ -137,8 +149,8 @@
         <header>
             <h1>Engineering Notes</h1>
             <div class="subtitle">
-                A personal knowledge base for Senior Backend Engineering. <br>
-                Covering Algorithms, Language Internals, and Runtime Architecture.
+                The Senior Backend Engineer's Knowledge Base. <br>
+                From Low-Level Algorithms to High-Level Architecture.
             </div>
         </header>
 
@@ -148,7 +160,7 @@
                 <div>
                     <div class="card-icon">🧠</div>
                     <h2>The Algorithms</h2>
-                    <p>The Blind 75 patterns visualized. Covers Sliding Windows, Two Pointers, Dynamic Programming, and Graphs with ELI5 mental models.</p>
+                    <p>The Blind 75 patterns visualized. Sliding Windows, Two Pointers, Dynamic Programming, and Graph traversals.</p>
                 </div>
                 <div class="status status-dsa">● 75 Questions</div>
             </a>
@@ -157,7 +169,7 @@
                 <div>
                     <div class="card-icon">⚡</div>
                     <h2>The Language</h2>
-                    <p>Deep dive into the JavaScript Engine. Closures, Prototypes, Coercion, and the Event Loop explained without frameworks.</p>
+                    <p>Deep dive into the V8 Engine. Closures, Prototypes, Coercion, and the Event Loop explained without frameworks.</p>
                 </div>
                 <div class="status status-js">● 30 Core Concepts</div>
             </a>
@@ -165,16 +177,25 @@
             <a href="node-internals.html" class="card card-node">
                 <div>
                     <div class="card-icon">🏗️</div>
-                    <h2>The Platform</h2>
-                    <p>Node.js architecture for production. Libuv, Threads, Streams, Clustering, Memory Leaks, and scalable system design.</p>
+                    <h2>The Runtime</h2>
+                    <p>Node.js architecture for production. Libuv, Threads, Streams, Clustering, Memory Leaks, and Diagnostics.</p>
                 </div>
-                <div class="status status-node">● 29 Architectures</div>
+                <div class="status status-node">● 29 Internals</div>
+            </a>
+
+            <a href="system-design.html" class="card card-design">
+                <div>
+                    <div class="card-icon">📐</div>
+                    <h2>The Architecture</h2>
+                    <p>Scalability patterns for MAANG. Load Balancing, Sharding, CAP Theorem, Distributed Locks, and Real-World Designs.</p>
+                </div>
+                <div class="status status-design">● 25 Patterns</div>
             </a>
 
         </div>
 
         <footer>
-            Built for the Senior/Staff Engineer Interview Path.
+            Ready for the Staff Engineer Interview.
         </footer>
     </div>
 
