@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Engineering Notes</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --accent: #38bdf8;
+            --hover-accent: #0ea5e9;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+        
+        /* Grid Layout */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+        }
+
+        /* Card Styling */
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 25px;
+            transition: transform 0.2s, border-color 0.2s;
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .icon {
+            font-size: 2rem;
+            margin-right: 15px;
+        }
+        .card h2 {
+            margin: 0;
+            font-size: 1.25rem;
+            color: var(--accent);
+        }
+        .card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+        .status {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 20px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            width: fit-content;
+        }
+        .done { background: rgba(74, 222, 128, 0.1); color: #4ade80; }
+        .wip { background: rgba(251, 191, 36, 0.1); color: #fbbf24; }
+        .todo { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>My Knowledge Base</h1>
+            <div class="subtitle">A personal collection of patterns, algorithms, and system design notes.</div>
+        </header>
+
+        <div class="grid">
+            
+            <a href="dsa-75.html" class="card">
+                <div>
+                    <div class="card-header">
+                        <span class="icon">🧠</span>
+                        <h2>Blind 75 Patterns</h2>
+                    </div>
+                    <p>The "ELI5" guide to the 75 most essential LeetCode questions. Covers Arrays, Trees, Graphs, and DP with visualized mental models.</p>
+                </div>
+                <div class="status done">● Complete</div>
+            </a>
+
+            <a href="#" class="card" style="opacity: 0.6; cursor: not-allowed;">
+                <div>
+                    <div class="card-header">
+                        <span class="icon">🏗️</span>
+                        <h2>System Design</h2>
+                    </div>
+                    <p>Scalability patterns, Load Balancing, Caching strategies, and database partitioning guides.</p>
+                </div>
+                <div class="status todo">● Coming Soon</div>
+            </a>
+
+            <a href="#" class="card" style="opacity: 0.6; cursor: not-allowed;">
+                <div>
+                    <div class="card-header">
+                        <span class="icon">📘</span>
+                        <h2>TypeScript Wizardry</h2>
+                    </div>
+                    <p>Advanced generic types, utility types, and strict mode best practices.</p>
+                </div>
+                <div class="status todo">● Coming Soon</div>
+            </a>
+
+        </div>
+    </div>
+
+</body>
+</html>
